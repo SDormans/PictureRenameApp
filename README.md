@@ -67,39 +67,39 @@ Documents<BaseName>\
 
 If the base name entered is:
 
-```
+---
 
 Holiday
 
-```
+---
 
 And 3 files are dropped:
 
-```
+---
 
 photo1.jpg
 photo2.jpg
 photo3.jpg
 
-```
+---
 
 They will be copied to:
 
-```
+---
 
 Documents\Holiday\
 
-```
+---
 
 And renamed to:
 
-```
+---
 
 Holiday_001.jpg
 Holiday_002.jpg
 Holiday_003.jpg
 
-```
+---
 
 ---
 
