@@ -37,7 +37,9 @@
             fontDialog1 = new FontDialog();
             backgroundWorker1 = new System.ComponentModel.BackgroundWorker();
             flowLayoutPanel1 = new FlowLayoutPanel();
+            checkBox1 = new CheckBox();
             menuStrip1.SuspendLayout();
+            flowLayoutPanel1.SuspendLayout();
             SuspendLayout();
             // 
             // button1
@@ -46,7 +48,7 @@
             button1.Name = "button1";
             button1.Size = new Size(75, 23);
             button1.TabIndex = 0;
-            button1.Text = "button1";
+            button1.Text = "Rename";
             button1.UseVisualStyleBackColor = true;
             button1.Click += button1_Click;
             // 
@@ -91,12 +93,23 @@
             // 
             flowLayoutPanel1.AllowDrop = true;
             flowLayoutPanel1.BackColor = SystemColors.ButtonHighlight;
+            flowLayoutPanel1.Controls.Add(checkBox1);
             flowLayoutPanel1.Location = new Point(62, 70);
             flowLayoutPanel1.Name = "flowLayoutPanel1";
             flowLayoutPanel1.Size = new Size(726, 303);
             flowLayoutPanel1.TabIndex = 5;
             flowLayoutPanel1.DragDrop += flowLayoutPanel1_DragDrop_1;
             flowLayoutPanel1.DragEnter += flowLayoutPanel1_DragEnter;
+            // 
+            // checkBox1
+            // 
+            checkBox1.AutoSize = true;
+            checkBox1.Location = new Point(3, 3);
+            checkBox1.Name = "checkBox1";
+            checkBox1.Size = new Size(82, 19);
+            checkBox1.TabIndex = 0;
+            checkBox1.Text = "checkBox1";
+            checkBox1.UseVisualStyleBackColor = true;
             // 
             // Form1
             // 
@@ -112,6 +125,8 @@
             Text = "Form1";
             menuStrip1.ResumeLayout(false);
             menuStrip1.PerformLayout();
+            flowLayoutPanel1.ResumeLayout(false);
+            flowLayoutPanel1.PerformLayout();
             ResumeLayout(false);
             PerformLayout();
         }
@@ -127,5 +142,6 @@
         private FontDialog fontDialog1;
         private System.ComponentModel.BackgroundWorker backgroundWorker1;
         private FlowLayoutPanel flowLayoutPanel1;
+        private CheckBox checkBox1;
     }
 }

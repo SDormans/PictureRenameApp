@@ -12,9 +12,9 @@ using System;
 using System.Reflection;
 
 [assembly: System.Reflection.AssemblyCompanyAttribute("PictureRenameApp")]
-[assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
+[assembly: System.Reflection.AssemblyConfigurationAttribute("Release")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+dd275d06e89a5b2bfcb358e52b9e17c837425432")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+fe903402f8dfc2cd132cae0639df3f96bab35c2f")]
 [assembly: System.Reflection.AssemblyProductAttribute("PictureRenameApp")]
 [assembly: System.Reflection.AssemblyTitleAttribute("PictureRenameApp")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
