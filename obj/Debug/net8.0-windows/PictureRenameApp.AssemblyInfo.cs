@@ -14,7 +14,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("PictureRenameApp")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+dd275d06e89a5b2bfcb358e52b9e17c837425432")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+5919a7ec86e1ce67d375b3b099578095ecbac719")]
 [assembly: System.Reflection.AssemblyProductAttribute("PictureRenameApp")]
 [assembly: System.Reflection.AssemblyTitleAttribute("PictureRenameApp")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
