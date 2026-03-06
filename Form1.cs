@@ -12,12 +12,17 @@ namespace PictureRenameApp
     public partial class Form1 : Form
     {
         private static readonly string[] SupportedImageExtensions = { ".jpg", ".jpeg", ".png", ".bmp", ".gif", ".webp", ".tiff" };
+        private readonly Size ThumbnailSize = new Size(128, 128);
+
+        // new: track current directory shown in the thumbnail panel (null when none)
+        private string? currentDirectory;
 
         public Form1()
         {
             InitializeComponent();
             InitializeCustomControls();
-            LoadRootDrives();
+            // start with placeholder visible (no directory loaded)
+            ShowPlaceholder();
         }
 
         private void InitializeCustomControls()
@@ -29,62 +34,137 @@ namespace PictureRenameApp
             topToolStrip.Items.Add(new ToolStripSeparator());
             topToolStrip.Items.Add(new ToolStripButton(" 🗑️ Delete", null, ClearAll_Click));
             topToolStrip.Items.Add(new ToolStripButton(" ⚙️ Settings", null, Settings_Click));
+
+            // ensure thumbnail list size matches panel usage
+            thumbnailImageList.ImageSize = ThumbnailSize;
         }
 
-        private void LoadRootDrives()
+        private void LoadDirectoryThumbnails(string directoryPath)
         {
-            directoryTreeView.Nodes.Clear();
-            foreach (var drive in DriveInfo.GetDrives())
+            if (!Directory.Exists(directoryPath))
             {
-                if (drive.IsReady)
-                {
-                    var driveNode = new TreeNode(drive.Name) { Tag = drive.RootDirectory.FullName };
-                    driveNode.Nodes.Add(new TreeNode("")); // dummy for lazy load
-                    directoryTreeView.Nodes.Add(driveNode);
-                }
+                currentDirectory = null;
+                ShowPlaceholder();
+                return;
             }
-        }
 
-        private void DirectoryTreeView_AfterSelect(object sender, TreeViewEventArgs e)
-        {
-            if (e.Node?.Tag is string path)
-            {
-                if (File.Exists(path))
-                {
-                    // selected a file node
-                    DisplayImagePreview(path);
-                    DisplayFileMetadata(path);
-                }
-                else if (Directory.Exists(path))
-                {
-                    DisplayFilesForDirectory(path);
-                }
-            }
-        }
+            // set current directory as the displayed folder
+            currentDirectory = directoryPath;
 
-        private void DisplayFilesForDirectory(string directoryPath)
-        {
+            ClearThumbnails();
+
+            List<string> files;
             try
             {
-                var files = Directory.GetFiles(directoryPath)
+                files = Directory.GetFiles(directoryPath)
                     .Where(f => SupportedImageExtensions.Contains(Path.GetExtension(f).ToLower()))
+                    .OrderBy(f => f)
                     .ToList();
-
-                if (files.Count > 0)
-                {
-                    var firstFile = files[0];
-                    DisplayImagePreview(firstFile);
-                    DisplayFileMetadata(firstFile);
-                }
-                else
-                {
-                    previewPictureBox.Image = null;
-                    metadataTextBox.Text = "No images in this directory.";
-                }
             }
             catch (UnauthorizedAccessException)
             {
                 metadataTextBox.Text = "Access denied.";
+                ShowPlaceholder();
+                return;
+            }
+
+            if (files.Count == 0)
+            {
+                metadataTextBox.Text = "No images in this directory.";
+                previewPictureBox.Image?.Dispose();
+                previewPictureBox.Image = null;
+                ShowPlaceholder();
+                return;
+            }
+
+            HidePlaceholder();
+
+            foreach (var file in files)
+            {
+                var thumb = CreateThumbnailImage(file, ThumbnailSize) ?? new Bitmap(ThumbnailSize.Width, ThumbnailSize.Height);
+                var pb = new PictureBox
+                {
+                    Width = ThumbnailSize.Width + 8,
+                    Height = ThumbnailSize.Height + 8,
+                    SizeMode = PictureBoxSizeMode.CenterImage,
+                    Image = thumb,
+                    Tag = file,
+                    Padding = new Padding(4),
+                    Cursor = Cursors.Hand,
+                    BackColor = Color.White,
+                    BorderStyle = BorderStyle.FixedSingle
+                };
+                pb.Click += Thumbnail_Click;
+                pb.DoubleClick += Thumbnail_DoubleClick;
+                var tooltip = new ToolTip();
+                tooltip.SetToolTip(pb, file);
+                thumbnailPanel.Controls.Add(pb);
+            }
+
+            // optionally highlight first thumbnail
+            var firstPb = thumbnailPanel.Controls.OfType<PictureBox>().FirstOrDefault();
+            if (firstPb != null)
+            {
+                firstPb.BackColor = Color.LightBlue;
+                DisplayImagePreview(firstPb.Tag as string ?? string.Empty);
+                DisplayFileMetadata(firstPb.Tag as string ?? string.Empty);
+            }
+        }
+
+        private void ClearThumbnails()
+        {
+            // dispose only PictureBox thumbnails, keep placeholderLabel
+            var toRemove = thumbnailPanel.Controls.OfType<PictureBox>().ToList();
+            foreach (var pb in toRemove)
+            {
+                pb.Image?.Dispose();
+                thumbnailPanel.Controls.Remove(pb);
+                pb.Dispose();
+            }
+
+            // clear current directory when thumbnails are cleared
+            currentDirectory = null;
+        }
+
+        private void ShowPlaceholder()
+        {
+            placeholderLabel.Visible = true;
+            placeholderLabel.BringToFront();
+        }
+
+        private void HidePlaceholder()
+        {
+            placeholderLabel.Visible = false;
+        }
+
+        private void Thumbnail_Click(object? sender, EventArgs e)
+        {
+            if (sender is PictureBox pb && pb.Tag is string path && File.Exists(path))
+            {
+                DisplayImagePreview(path);
+                DisplayFileMetadata(path);
+                // highlight selected thumbnail
+                foreach (Control c in thumbnailPanel.Controls.OfType<PictureBox>())
+                {
+                    c.BackColor = Color.White;
+                }
+                pb.BackColor = Color.LightBlue;
+
+                // update currentDirectory to the directory of the selected item
+                currentDirectory = Path.GetDirectoryName(path);
+            }
+        }
+
+        private void Thumbnail_DoubleClick(object? sender, EventArgs e)
+        {
+            // open with default viewer
+            if (sender is PictureBox pb && pb.Tag is string path && File.Exists(path))
+            {
+                try
+                {
+                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(path) { UseShellExecute = true });
+                }
+                catch { /* ignore */ }
             }
         }
 
@@ -92,11 +172,9 @@ namespace PictureRenameApp
         {
             try
             {
-                // load image into memory to avoid locking the file
                 var bytes = File.ReadAllBytes(filePath);
                 using var ms = new MemoryStream(bytes);
                 var image = Image.FromStream(ms);
-                // clone to avoid stream dependencies
                 previewPictureBox.Image?.Dispose();
                 previewPictureBox.Image = new Bitmap(image);
             }
@@ -116,7 +194,8 @@ namespace PictureRenameApp
                 metadata.AppendLine($"File: {fileInfo.Name}");
                 metadata.AppendLine($"Size: {FormatBytes(fileInfo.Length)}");
                 metadata.AppendLine($"Created: {fileInfo.CreationTime:yyyy-MM-dd HH:mm:ss}");
-                metadata.AppendLine($"Modified: {fileInfo.LastWriteTime:yyyy-MM-dd HH:mm:ss}");
+                metadata.AppendLine($"Modified: {fileInfo.LastWriteTime:yyyy-MM-dd HH:mm:ss}");   // optional: add more metadata like EXIF if needed and the modification time is before creation time 
+
                 metadata.AppendLine($"Path: {fileInfo.FullName}");
 
                 if (previewPictureBox.Image != null)
@@ -154,69 +233,14 @@ namespace PictureRenameApp
             double len = bytes;
             int order = 0;
             while (len >= 1024 && order < sizes.Length - 1)
-            {
+            {       
                 order++;
                 len = len / 1024;
             }
             return $"{len:0.##} {sizes[order]}";
         }
 
-        private void DirectoryTreeView_BeforeExpand(object sender, TreeViewCancelEventArgs e)
-        {
-            if (e.Node.Nodes.Count == 1 && e.Node.Nodes[0].Text == "")
-            {
-                e.Node.Nodes.Clear();
-                var path = e.Node.Tag as string;
-                try
-                {
-                    // add subdirectories
-                    foreach (var dir in Directory.GetDirectories(path))
-                    {
-                        var subNode = new TreeNode(Path.GetFileName(dir)) { Tag = dir };
-                        subNode.Nodes.Add(new TreeNode("")); // dummy
-                        e.Node.Nodes.Add(subNode);
-                    }
-
-                    // add image files with thumbnails
-                    var files = Directory.GetFiles(path)
-                        .Where(f => SupportedImageExtensions.Contains(Path.GetExtension(f).ToLower()))
-                        .ToList();
-
-                    if (files.Count > 0)
-                    {
-                        e.Node.Nodes.Add(new TreeNode("--- Images ---") { ForeColor = Color.Gray, Tag = null });
-                        foreach (var file in files)
-                        {
-                            var fileNode = new TreeNode(Path.GetFileName(file)) { Tag = file };
-                            EnsureThumbnail(file);
-                            // set image keys to the file path (unique)
-                            fileNode.ImageKey = file;
-                            fileNode.SelectedImageKey = file;
-                            fileNode.ToolTipText = file;
-                            e.Node.Nodes.Add(fileNode);
-                        }
-                    }
-                }
-                catch { }
-            }
-        }
-
-        private void EnsureThumbnail(string file)
-        {
-            if (thumbnailImageList == null) return;
-            try
-            {
-                if (thumbnailImageList.Images.IndexOfKey(file) >= 0) return;
-                var thumb = CreateThumbnailImage(file, thumbnailImageList.ImageSize);
-                if (thumb != null)
-                {
-                    thumbnailImageList.Images.Add(file, thumb);
-                }
-            }
-            catch { /* ignore thumbnail errors */ }
-        }
-
-        private Image CreateThumbnailImage(string filePath, Size size)
+        private Image? CreateThumbnailImage(string filePath, Size size)
         {
             try
             {
@@ -229,7 +253,6 @@ namespace PictureRenameApp
                 g.InterpolationMode = InterpolationMode.HighQualityBicubic;
                 g.SmoothingMode = SmoothingMode.HighQuality;
                 g.Clear(Color.Transparent);
-                // preserve aspect ratio
                 var ratio = Math.Min((double)size.Width / src.Width, (double)size.Height / src.Height);
                 var thumbW = (int)(src.Width * ratio);
                 var thumbH = (int)(src.Height * ratio);
@@ -244,7 +267,7 @@ namespace PictureRenameApp
             }
         }
 
-        private void DirectoryTreeView_DragEnter(object sender, DragEventArgs e)
+        private void ThumbnailPanel_DragEnter(object sender, DragEventArgs e)
         {
             if (e.Data.GetDataPresent(DataFormats.FileDrop))
                 e.Effect = DragDropEffects.Copy;
@@ -252,57 +275,115 @@ namespace PictureRenameApp
                 e.Effect = DragDropEffects.None;
         }
 
-        private void DirectoryTreeView_DragDrop(object sender, DragEventArgs e)
+        private void ThumbnailPanel_DragDrop(object sender, DragEventArgs e)
         {
             if (!e.Data.GetDataPresent(DataFormats.FileDrop)) return;
-
             var dropItems = (string[])e.Data.GetData(DataFormats.FileDrop);
             if (dropItems == null || dropItems.Length == 0) return;
 
-            // determine node under drop point
-            var clientPoint = directoryTreeView.PointToClient(new Point(e.X, e.Y));
-            var targetNode = directoryTreeView.GetNodeAt(clientPoint);
+            // if a folder was dropped, load that folder; if files dropped, try to load images
+            var folder = dropItems.FirstOrDefault(d => Directory.Exists(d));
+            if (folder != null)
+            {
+                LoadDirectoryThumbnails(folder);
+                return;
+            }
 
-            directoryTreeView.BeginUpdate();
-            try
+            // if files dropped, filter images and add to panel (do not copy)
+            var imageFiles = dropItems.Where(f => File.Exists(f) && SupportedImageExtensions.Contains(Path.GetExtension(f).ToLower())).ToList();
+            if (imageFiles.Count == 0) return;
+
+            ClearThumbnails();
+            HidePlaceholder();
+
+            foreach (var file in imageFiles)
             {
-                foreach (var path in dropItems)
+                var thumb = CreateThumbnailImage(file, ThumbnailSize) ?? new Bitmap(ThumbnailSize.Width, ThumbnailSize.Height);
+                var pb = new PictureBox
                 {
-                    if (Directory.Exists(path))
-                    {
-                        var node = new TreeNode(Path.GetFileName(path)) { Tag = path };
-                        node.Nodes.Add(new TreeNode("")); // dummy for lazy load
-                        if (targetNode != null && Directory.Exists(targetNode.Tag as string))
-                            targetNode.Nodes.Add(node);
-                        else
-                            directoryTreeView.Nodes.Add(node);
-                    }
-                    else if (File.Exists(path))
-                    {
-                        var ext = Path.GetExtension(path).ToLower();
-                        if (!SupportedImageExtensions.Contains(ext))
-                            continue;
-                        var node = new TreeNode(Path.GetFileName(path)) { Tag = path };
-                        EnsureThumbnail(path);
-                        node.ImageKey = path;
-                        node.SelectedImageKey = path;
-                        node.ToolTipText = path;
-                        if (targetNode != null && Directory.Exists(targetNode.Tag as string))
-                            targetNode.Nodes.Add(node);
-                        else
-                            directoryTreeView.Nodes.Add(node);
-                    }
-                }
+                    Width = ThumbnailSize.Width + 8,
+                    Height = ThumbnailSize.Height + 8,
+                    SizeMode = PictureBoxSizeMode.CenterImage,
+                    Image = thumb,
+                    Tag = file,
+                    Padding = new Padding(4),
+                    Cursor = Cursors.Hand,
+                    BackColor = Color.White,
+                    BorderStyle = BorderStyle.FixedSingle
+                };
+                pb.Click += Thumbnail_Click;
+                pb.DoubleClick += Thumbnail_DoubleClick;
+                var tooltip = new ToolTip();
+                tooltip.SetToolTip(pb, file);
+                thumbnailPanel.Controls.Add(pb);
             }
-            finally
-            {
-                directoryTreeView.EndUpdate();
-            }
+
+            // record currentDirectory as the parent of the first dropped file (useful for Open)
+            currentDirectory = Path.GetDirectoryName(imageFiles[0]);
+
+            // show first dropped image
+            DisplayImagePreview(imageFiles[0]);
+            DisplayFileMetadata(imageFiles[0]);
         }
 
         private void OpenFolder_Click(object sender, EventArgs e)
         {
-            MessageBox.Show("Open Map wordt later geïmplementeerd");
+            // if a thumbnail is selected, open its folder; otherwise open the currentDirectory; fallback to folder browser.
+            string? selectedFile = GetSelectedThumbnailFilePath();
+            string? dirToOpen = null;
+
+            if (!string.IsNullOrEmpty(selectedFile) && File.Exists(selectedFile))
+            {
+                dirToOpen = Path.GetDirectoryName(selectedFile);
+            }
+            else if (!string.IsNullOrEmpty(currentDirectory) && Directory.Exists(currentDirectory))
+            {
+                dirToOpen = currentDirectory;
+            }
+
+            if (!string.IsNullOrEmpty(dirToOpen) && Directory.Exists(dirToOpen))
+            {
+                // load thumbnails in-app so the user sees content immediately
+                try
+                {
+                    LoadDirectoryThumbnails(dirToOpen);
+                }
+                catch
+                {
+                    /* ignore loading errors, still try to open Explorer */
+                }
+
+                // also open Explorer at that directory (preserve previous behavior)
+                try
+                {
+                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo()
+                    {
+                        FileName = dirToOpen,
+                        UseShellExecute = true,
+                        Verb = "open"
+                    });
+                }
+                catch
+                {
+                    // ignore explorer-launch errors
+                }
+
+                return;
+            }
+
+            // fallback: let user pick a folder =>duurt tering lang
+            using var dlg = new FolderBrowserDialog { Description = "Select folder" };
+            if (dlg.ShowDialog(this) == DialogResult.OK)
+            {
+                LoadDirectoryThumbnails(dlg.SelectedPath);
+            }
+        }
+
+        // helper: find the file path of the currently selected thumbnail (background highlight)
+        private string? GetSelectedThumbnailFilePath()
+        {
+            var pb = thumbnailPanel.Controls.OfType<PictureBox>().FirstOrDefault(p => p.BackColor == Color.LightBlue);
+            return pb?.Tag as string;
         }
 
         private void RenameButton_Click(object sender, EventArgs e)
@@ -317,7 +398,12 @@ namespace PictureRenameApp
 
         private void ClearAll_Click(object sender, EventArgs e)
         {
-            MessageBox.Show("Wissen wordt later geïmplementeerd");
+            // clear thumbnails and preview and show placeholder
+            ClearThumbnails();
+            previewPictureBox.Image?.Dispose();
+            previewPictureBox.Image = null;
+            metadataTextBox.Clear();
+            ShowPlaceholder();
         }
 
         private void Settings_Click(object sender, EventArgs e)

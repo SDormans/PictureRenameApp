@@ -28,12 +28,14 @@
         /// </summary>
         private void InitializeComponent()
         {
+            components = new System.ComponentModel.Container();
             mainSplitContainer = new SplitContainer();
-            directoryTreeView = new TreeView();
-            thumbnailImageList = new ImageList();
+            thumbnailPanel = new FlowLayoutPanel();
+            placeholderLabel = new Label();
             rightSplitContainer = new SplitContainer();
             previewPictureBox = new PictureBox();
             metadataTextBox = new TextBox();
+            thumbnailImageList = new ImageList(components);
             topToolStrip = new ToolStrip();
             toolStripSeparator1 = new ToolStripSeparator();
             toolStripSeparator2 = new ToolStripSeparator();
@@ -41,6 +43,7 @@
             mainSplitContainer.Panel1.SuspendLayout();
             mainSplitContainer.Panel2.SuspendLayout();
             mainSplitContainer.SuspendLayout();
+            thumbnailPanel.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)rightSplitContainer).BeginInit();
             rightSplitContainer.Panel1.SuspendLayout();
             rightSplitContainer.Panel2.SuspendLayout();
@@ -59,7 +62,7 @@
             // mainSplitContainer.Panel1
             // 
             mainSplitContainer.Panel1.BackColor = Color.White;
-            mainSplitContainer.Panel1.Controls.Add(directoryTreeView);
+            mainSplitContainer.Panel1.Controls.Add(thumbnailPanel);
             mainSplitContainer.Panel1MinSize = 200;
             // 
             // mainSplitContainer.Panel2
@@ -68,28 +71,37 @@
             mainSplitContainer.Panel2.Controls.Add(rightSplitContainer);
             mainSplitContainer.Panel2MinSize = 300;
             mainSplitContainer.Size = new Size(1574, 903);
-            // make the left directory panel bigger
-            mainSplitContainer.SplitterDistance = 800;
+            mainSplitContainer.SplitterDistance = 940;
             mainSplitContainer.TabIndex = 0;
             // 
-            // directoryTreeView
+            // thumbnailPanel
             // 
-            directoryTreeView.Dock = DockStyle.Fill;
-            directoryTreeView.Location = new Point(0, 0);
-            directoryTreeView.Name = "directoryTreeView";
-            directoryTreeView.Size = new Size(798, 901);
-            directoryTreeView.TabIndex = 0;
-            directoryTreeView.AfterSelect += DirectoryTreeView_AfterSelect;
-            directoryTreeView.BeforeExpand += DirectoryTreeView_BeforeExpand;
-            // enable drag & drop
-            directoryTreeView.AllowDrop = true;
-            directoryTreeView.DragEnter += DirectoryTreeView_DragEnter;
-            directoryTreeView.DragDrop += DirectoryTreeView_DragDrop;
-            directoryTreeView.ShowNodeToolTips = true;
-            // associate image list for thumbnails
-            thumbnailImageList.ColorDepth = ColorDepth.Depth32Bit;
-            thumbnailImageList.ImageSize = new Size(64, 64);
-            directoryTreeView.ImageList = thumbnailImageList;
+            thumbnailPanel.AllowDrop = true;
+            thumbnailPanel.AutoScroll = true;
+            thumbnailPanel.BackColor = SystemColors.InactiveCaption;
+            thumbnailPanel.Controls.Add(placeholderLabel);
+            thumbnailPanel.Dock = DockStyle.Fill;
+            thumbnailPanel.Location = new Point(0, 0);
+            thumbnailPanel.Name = "thumbnailPanel";
+            thumbnailPanel.Padding = new Padding(10);
+            thumbnailPanel.Size = new Size(938, 901);
+            thumbnailPanel.TabIndex = 0;
+            thumbnailPanel.DragDrop += ThumbnailPanel_DragDrop;
+            thumbnailPanel.DragEnter += ThumbnailPanel_DragEnter;
+            // 
+            // placeholderLabel
+            // 
+            placeholderLabel.BackColor = Color.Transparent;
+            placeholderLabel.Dock = DockStyle.Fill;
+            placeholderLabel.Font = new Font("Segoe UI", 14F);
+            placeholderLabel.ForeColor = Color.Black;
+            placeholderLabel.Location = new Point(10, 10);
+            placeholderLabel.Margin = new Padding(0);
+            placeholderLabel.Name = "placeholderLabel";
+            placeholderLabel.Size = new Size(100, 0);
+            placeholderLabel.TabIndex = 0;
+            placeholderLabel.Text = "Drop your files here";
+            placeholderLabel.TextAlign = ContentAlignment.MiddleCenter;
             // 
             // rightSplitContainer
             // 
@@ -111,8 +123,8 @@
             rightSplitContainer.Panel2.BackColor = Color.White;
             rightSplitContainer.Panel2.Controls.Add(metadataTextBox);
             rightSplitContainer.Panel2MinSize = 150;
-            rightSplitContainer.Size = new Size(762, 903);
-            rightSplitContainer.SplitterDistance = 450;
+            rightSplitContainer.Size = new Size(630, 903);
+            rightSplitContainer.SplitterDistance = 449;
             rightSplitContainer.TabIndex = 0;
             // 
             // previewPictureBox
@@ -121,7 +133,7 @@
             previewPictureBox.Dock = DockStyle.Fill;
             previewPictureBox.Location = new Point(0, 0);
             previewPictureBox.Name = "previewPictureBox";
-            previewPictureBox.Size = new Size(760, 448);
+            previewPictureBox.Size = new Size(628, 447);
             previewPictureBox.SizeMode = PictureBoxSizeMode.Zoom;
             previewPictureBox.TabIndex = 0;
             previewPictureBox.TabStop = false;
@@ -135,8 +147,15 @@
             metadataTextBox.Name = "metadataTextBox";
             metadataTextBox.ReadOnly = true;
             metadataTextBox.ScrollBars = ScrollBars.Both;
-            metadataTextBox.Size = new Size(760, 449);
+            metadataTextBox.Size = new Size(628, 448);
             metadataTextBox.TabIndex = 0;
+            metadataTextBox.Text = "Metadata";
+            // 
+            // thumbnailImageList
+            // 
+            thumbnailImageList.ColorDepth = ColorDepth.Depth32Bit;
+            thumbnailImageList.ImageSize = new Size(128, 128);
+            thumbnailImageList.TransparentColor = Color.Transparent;
             // 
             // topToolStrip
             // 
@@ -171,10 +190,11 @@
             mainSplitContainer.Panel2.ResumeLayout(false);
             ((System.ComponentModel.ISupportInitialize)mainSplitContainer).EndInit();
             mainSplitContainer.ResumeLayout(false);
-            ((System.ComponentModel.ISupportInitialize)rightSplitContainer).EndInit();
+            thumbnailPanel.ResumeLayout(false);
             rightSplitContainer.Panel1.ResumeLayout(false);
             rightSplitContainer.Panel2.ResumeLayout(false);
             rightSplitContainer.Panel2.PerformLayout();
+            ((System.ComponentModel.ISupportInitialize)rightSplitContainer).EndInit();
             rightSplitContainer.ResumeLayout(false);
             ((System.ComponentModel.ISupportInitialize)previewPictureBox).EndInit();
             topToolStrip.ResumeLayout(false);
@@ -192,9 +212,10 @@
         private ToolStrip topToolStrip;
         private ToolStripSeparator toolStripSeparator1;
         private ToolStripSeparator toolStripSeparator2;
-        private TreeView directoryTreeView;
+        private FlowLayoutPanel thumbnailPanel;
         private PictureBox previewPictureBox;
         private TextBox metadataTextBox;
         private ImageList thumbnailImageList;
+        private Label placeholderLabel;
     }
 }
