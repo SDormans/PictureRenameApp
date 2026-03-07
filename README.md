@@ -99,8 +99,6 @@ vacation_001.jpg
 vacation_002.jpg
 vacation_003.jpg
 
-text
-
 ### Duplicate Detection Example:
 Selected files with duplicate names:
 C:\Photos\beach.jpg
@@ -110,27 +108,6 @@ C:\Downloads\beach.jpg
 User selects: C:\Photos\beach.jpg (blue highlight)
 Click "Keep Selected & Delete Others"
 Result: Only C:\Photos\beach.jpg remains
-
-text
-
----
-
-## 🧩 Project Structure
-PictureRenamePro/
-├── Form1.cs # Main form with UI logic
-├── FileItem.cs # File metadata class
-├── DuplicateGroup.cs # Duplicate group handling
-├── Dialogs/
-│ ├── SingleRenameDialog.cs # Custom rename dialog
-│ └── BatchRenameDialog.cs # Batch rename with preview
-├── Services/
-│ ├── FileProcessor.cs # File operations
-│ └── ThumbnailCache.cs # Thumbnail caching
-└── Controls/
-├── ThumbnailPanel.cs # Custom thumbnail control
-└── PreviewPanel.cs # Tabbed preview control
-
-text
 
 ---
 
@@ -187,7 +164,3 @@ text
 This project is intended for educational and demonstration purposes. Free to use and modify for personal projects.
 
 ---
-
-## 🙏 Acknowledgments
-
-Built with .NET Windows Forms, MetadataExtractor for EXIF data, and lots of coffee ☕
