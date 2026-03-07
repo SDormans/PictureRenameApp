@@ -22,13 +22,15 @@ namespace PictureRenameApp
 
         private List<string> filePaths = new List<string>();
 
-        // Form Duplicate variables
+        // Form variables - update voor multi-select
         private List<string> manualDuplicateFiles = new List<string>();
-        private int manualSelectedIndex = 0;
+        private List<int> manualSelectedIndices = new List<int>(); // ← Veranderd naar lijst
         private Panel manualDuplicatePanel = null;
         private Button manualKeepSelectedButton = null;
         private Button manualCancelButton = null;
         private Label manualInstructionLabel = null;
+        private bool isCtrlPressed = false;
+        private bool isShiftPressed = false;
 
         public class BatchRenameDialog : Form
         {
@@ -1007,13 +1009,17 @@ namespace PictureRenameApp
 
                 // Store selected files
                 manualDuplicateFiles = selectedFiles;
-                manualSelectedIndex = 0; // First file selected by default
+                manualSelectedIndices = new List<int> { 0 }; // First file selected by default
 
                 // Show manual duplicate panel
                 ShowManualDuplicatePanel();
 
                 // Show instruction
-                MessageBox.Show("Select which version you want to keep, then click 'Keep Selected & Delete Others'.",
+                MessageBox.Show("Select which versions you want to keep:\n\n" +
+                               "• Click: Select single file\n" +
+                               "• Ctrl+Click: Add/remove from selection\n" +
+                               "• Shift+Click: Select range\n\n" +
+                               "Then click 'Keep Selected & Delete Others'.",
                     "Manual Duplicate Selection",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Information);
@@ -1052,7 +1058,7 @@ namespace PictureRenameApp
                 // Instruction label
                 manualInstructionLabel = new Label
                 {
-                    Text = "Click on a thumbnail to select the version you want to keep",
+                    Text = "Click: Select single | Ctrl+Click: Toggle | Shift+Click: Select range",
                     Location = new Point(10, 35),
                     AutoSize = true,
                     ForeColor = Color.DarkBlue
@@ -1062,7 +1068,7 @@ namespace PictureRenameApp
                 // Progress label
                 var progressLabel = new Label
                 {
-                    Text = $"Files selected: {manualDuplicateFiles.Count}",
+                    Text = $"Files selected: {manualDuplicateFiles.Count} | To keep: {manualSelectedIndices.Count}",
                     Location = new Point(10, 55),
                     AutoSize = true,
                     ForeColor = Color.Gray
@@ -1134,6 +1140,11 @@ namespace PictureRenameApp
                     int x = startX + col * (thumbSize + padding);
                     int y = startY + row * (thumbSize + padding + 20);
 
+                    // Determine background color based on selection
+                    bool isSelected = manualSelectedIndices.Contains(i);
+                    Color backColor = isSelected ? Color.LightBlue : Color.White;
+                    Color borderColor = isSelected ? Color.Blue : Color.Gray;
+
                     // Create thumbnail PictureBox
                     var pb = new PictureBox
                     {
@@ -1141,8 +1152,8 @@ namespace PictureRenameApp
                         Location = new Point(x, y),
                         SizeMode = PictureBoxSizeMode.Zoom,
                         BorderStyle = BorderStyle.FixedSingle,
-                        BackColor = i == manualSelectedIndex ? Color.LightBlue : Color.White,
-                        Tag = filesToShow[i],
+                        BackColor = backColor,
+                        Tag = new Tuple<string, int>(filesToShow[i], i), // Store both path and index
                         Cursor = Cursors.Hand
                     };
 
@@ -1150,34 +1161,72 @@ namespace PictureRenameApp
                     LoadManualThumbnail(pb, filesToShow[i]);
 
                     // Click event for selection
-                    pb.Click += (s, e) =>
+                    pb.MouseDown += (s, e) =>
+                    {
+                        // Check for modifier keys
+                        isCtrlPressed = (Control.ModifierKeys & Keys.Control) == Keys.Control;
+                        isShiftPressed = (Control.ModifierKeys & Keys.Shift) == Keys.Shift;
+                    };
+
+                    pb.Click += (s, ev) =>
                     {
                         var clickedPb = s as PictureBox;
-                        if (clickedPb?.Tag is string filePath)
+                        if (clickedPb?.Tag is Tuple<string, int> tag)
                         {
-                            // Update selected index
-                            int newIndex = filesToShow.IndexOf(filePath);
-                            if (newIndex >= 0)
+                            int clickedIndex = tag.Item2;
+
+                            // Handle selection based on modifier keys
+                            if (isCtrlPressed)
                             {
-                                manualSelectedIndex = newIndex;
-
-                                // Refresh thumbnails to show new selection
-                                LoadManualDuplicateThumbnails();
-
-                                // Update instruction
-                                manualInstructionLabel.Text = $"Selected: {Path.GetFileName(filePath)}";
+                                // Ctrl+Click: Toggle selection
+                                if (manualSelectedIndices.Contains(clickedIndex))
+                                {
+                                    manualSelectedIndices.Remove(clickedIndex);
+                                }
+                                else
+                                {
+                                    manualSelectedIndices.Add(clickedIndex);
+                                    manualSelectedIndices.Sort();
+                                }
                             }
+                            else if (isShiftPressed && manualSelectedIndices.Any())
+                            {
+                                // Shift+Click: Select range from last selected to clicked
+                                int lastSelected = manualSelectedIndices.Last();
+                                int start = Math.Min(lastSelected, clickedIndex);
+                                int end = Math.Max(lastSelected, clickedIndex);
+
+                                for (int idx = start; idx <= end; idx++)
+                                {
+                                    if (!manualSelectedIndices.Contains(idx))
+                                    {
+                                        manualSelectedIndices.Add(idx);
+                                    }
+                                }
+                                manualSelectedIndices.Sort();
+                            }
+                            else
+                            {
+                                // Normal click: Select single file
+                                manualSelectedIndices = new List<int> { clickedIndex };
+                            }
+
+                            // Refresh thumbnails to show new selection
+                            LoadManualDuplicateThumbnails();
+
+                            // Update instruction
+                            UpdateSelectionLabel();
                         }
                     };
 
                     // Double-click to preview
-                    pb.DoubleClick += (s, e) =>
+                    pb.DoubleClick += (s, ev) =>
                     {
-                        if ((s as PictureBox)?.Tag is string filePath)
+                        if ((s as PictureBox)?.Tag is Tuple<string, int> tag)
                         {
                             System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
                             {
-                                FileName = filePath,
+                                FileName = tag.Item1,
                                 UseShellExecute = true
                             });
                         }
@@ -1193,7 +1242,7 @@ namespace PictureRenameApp
                         Size = new Size(thumbSize, 18),
                         TextAlign = ContentAlignment.MiddleCenter,
                         Font = new Font("Segoe UI", 7),
-                        Tag = filesToShow[i]
+                        BackColor = isSelected ? Color.LightBlue : Color.Transparent
                     };
                     manualDuplicatePanel.Controls.Add(label);
                 }
@@ -1211,13 +1260,7 @@ namespace PictureRenameApp
                 }
 
                 // Update progress label
-                var progressLabel = manualDuplicatePanel.Controls
-                    .OfType<Label>()
-                    .FirstOrDefault(l => l.Text.StartsWith("Files selected:"));
-                if (progressLabel != null)
-                {
-                    progressLabel.Text = $"Files selected: {manualDuplicateFiles.Count}  |  Selected to keep: {Path.GetFileName(manualDuplicateFiles[manualSelectedIndex])}";
-                }
+                UpdateSelectionLabel();
             }
             catch (Exception ex)
             {
@@ -1226,33 +1269,139 @@ namespace PictureRenameApp
             }
         }
 
-        private void LoadManualThumbnail(PictureBox pb, string filePath)
+        private void UpdateSelectionLabel()
         {
-            try
-            {
-                // Check if it's an image file
-                string[] imageExtensions = { ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tiff", ".webp" };
-                string extension = Path.GetExtension(filePath).ToLowerInvariant();
+            var progressLabel = manualDuplicatePanel.Controls
+                .OfType<Label>()
+                .FirstOrDefault(l => l.Text.StartsWith("Files selected:"));
 
-                if (imageExtensions.Contains(extension))
+            if (progressLabel != null)
+            {
+                progressLabel.Text = $"Files selected: {manualDuplicateFiles.Count} | To keep: {manualSelectedIndices.Count}";
+            }
+
+            if (manualInstructionLabel != null)
+            {
+                if (manualSelectedIndices.Count == 1)
                 {
-                    using (var img = Image.FromFile(filePath))
-                    {
-                        pb.Image = img.GetThumbnailImage(100, 100, null, IntPtr.Zero);
-                    }
+                    manualInstructionLabel.Text = $"Keeping: {Path.GetFileName(manualDuplicateFiles[manualSelectedIndices[0]])}";
                 }
                 else
                 {
-                    using (var icon = Icon.ExtractAssociatedIcon(filePath))
+                    manualInstructionLabel.Text = $"Keeping {manualSelectedIndices.Count} files (Click: Select | Ctrl+Click: Toggle | Shift+Click: Range)";
+                }
+            }
+        }
+
+        private void ManualKeepSelectedButton_Click(object sender, EventArgs e)
+        {
+            try
+            {
+                if (manualDuplicateFiles.Count == 0 || manualSelectedIndices.Count == 0) return;
+
+                var filesToDelete = new List<string>();
+                var filesToKeep = new List<string>();
+
+                // Get all files except the selected ones
+                for (int i = 0; i < manualDuplicateFiles.Count; i++)
+                {
+                    if (manualSelectedIndices.Contains(i))
                     {
-                        pb.Image = icon?.ToBitmap();
+                        filesToKeep.Add(manualDuplicateFiles[i]);
+                    }
+                    else
+                    {
+                        filesToDelete.Add(manualDuplicateFiles[i]);
+                    }
+                }
+
+                if (filesToDelete.Any())
+                {
+                    // Create confirmation message
+                    string message;
+
+                    if (filesToDelete.Count == 1 && filesToKeep.Count == 1)
+                    {
+                        message = $"Are you sure you want to delete 1 file?\n\n" +
+                                 $"Keeping: {Path.GetFileName(filesToKeep[0])}\n" +
+                                 $"Deleting: {Path.GetFileName(filesToDelete[0])}";
+                    }
+                    else
+                    {
+                        message = $"Are you sure you want to delete {filesToDelete.Count} files?\n\n" +
+                                 $"Keeping ({filesToKeep.Count} files):\n" +
+                                 $"{string.Join("\n", filesToKeep.Select(f => "✓ " + Path.GetFileName(f)).Take(3))}" +
+                                 (filesToKeep.Count > 3 ? $"\n  ... and {filesToKeep.Count - 3} more" : "") +
+                                 $"\n\nDeleting ({filesToDelete.Count} files):\n" +
+                                 $"{string.Join("\n", filesToDelete.Select(f => "✗ " + Path.GetFileName(f)).Take(5))}" +
+                                 (filesToDelete.Count > 5 ? $"\n  ... and {filesToDelete.Count - 5} more" : "");
+                    }
+
+                    var result = MessageBox.Show(message,
+                        "Confirm Delete",
+                        MessageBoxButtons.YesNo,
+                        MessageBoxIcon.Warning);
+
+                    if (result == DialogResult.Yes)
+                    {
+                        int deletedCount = 0;
+                        int failedCount = 0;
+                        var failedFiles = new List<string>();
+
+                        // Delete the files
+                        foreach (var file in filesToDelete)
+                        {
+                            try
+                            {
+                                File.Delete(file);
+                                RemoveThumbnailByPath(file);
+                                deletedCount++;
+                            }
+                            catch (Exception ex)
+                            {
+                                failedCount++;
+                                failedFiles.Add(Path.GetFileName(file));
+                                Debug.WriteLine($"Error deleting {file}: {ex.Message}");
+                            }
+                        }
+
+                        // Show result
+                        if (failedCount == 0)
+                        {
+                            MessageBox.Show($"Successfully deleted {deletedCount} file(s).\n\n" +
+                                           $"Kept ({filesToKeep.Count}):\n" +
+                                           $"{string.Join("\n", filesToKeep.Select(f => "• " + Path.GetFileName(f)).Take(5))}" +
+                                           (filesToKeep.Count > 5 ? $"\n... and {filesToKeep.Count - 5} more" : ""),
+                                           "Delete Complete",
+                                           MessageBoxButtons.OK,
+                                           MessageBoxIcon.Information);
+                        }
+                        else
+                        {
+                            MessageBox.Show($"Deleted {deletedCount} file(s).\n" +
+                                           $"Failed to delete {failedCount} file(s):\n" +
+                                           $"{string.Join("\n", failedFiles.Take(5))}" +
+                                           (failedFiles.Count > 5 ? $"\n... and {failedFiles.Count - 5} more" : ""),
+                                           "Delete Complete",
+                                           MessageBoxButtons.OK,
+                                           MessageBoxIcon.Warning);
+                        }
+
+                        // Hide panel and refresh
+                        HideManualDuplicatePanel();
+
+                        // Refresh main view
+                        if (currentDirectory != null && Directory.Exists(currentDirectory))
+                        {
+                            LoadDirectoryThumbnails(currentDirectory);
+                        }
                     }
                 }
             }
-            catch
+            catch (Exception ex)
             {
-                pb.BackColor = Color.LightGray;
-                pb.Image = null;
+                MessageBox.Show($"Error deleting files: {ex.Message}",
+                    "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 
@@ -1287,120 +1436,101 @@ namespace PictureRenameApp
             }
         }
 
-        private void ManualKeepSelectedButton_Click(object sender, EventArgs e)
+        private void LoadManualThumbnail(PictureBox pb, string filePath)
         {
             try
             {
-                if (manualDuplicateFiles.Count == 0) return;
+                // Check if it's an image file
+                string[] imageExtensions = { ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tiff", ".webp" };
+                string extension = Path.GetExtension(filePath).ToLowerInvariant();
 
-                var filesToDelete = new List<string>();
-
-                // Get all files except the selected one
-                for (int i = 0; i < manualDuplicateFiles.Count; i++)
+                if (imageExtensions.Contains(extension))
                 {
-                    if (i != manualSelectedIndex)
+                    using (var img = Image.FromFile(filePath))
                     {
-                        filesToDelete.Add(manualDuplicateFiles[i]);
+                        pb.Image = img.GetThumbnailImage(100, 100, null, IntPtr.Zero);
                     }
                 }
-
-                if (filesToDelete.Any())
+                else
                 {
-                    // Create confirmation message
-                    string message = filesToDelete.Count == 1
-                        ? $"Are you sure you want to delete 1 file?\n\n" +
-                          $"Keeping: {Path.GetFileName(manualDuplicateFiles[manualSelectedIndex])}\n" +
-                          $"Deleting: {Path.GetFileName(filesToDelete[0])}"
-                        : $"Are you sure you want to delete {filesToDelete.Count} files?\n\n" +
-                          $"Keeping: {Path.GetFileName(manualDuplicateFiles[manualSelectedIndex])}\n" +
-                          $"Deleting:\n{string.Join("\n", filesToDelete.Select(f => "• " + Path.GetFileName(f)).Take(5))}" +
-                          (filesToDelete.Count > 5 ? $"\n... and {filesToDelete.Count - 5} more" : "");
-
-                    var result = MessageBox.Show(message,
-                        "Confirm Delete",
-                        MessageBoxButtons.YesNo,
-                        MessageBoxIcon.Warning);
-
-                    if (result == DialogResult.Yes)
+                    using (var icon = Icon.ExtractAssociatedIcon(filePath))
                     {
-                        int deletedCount = 0;
-                        int failedCount = 0;
+                        pb.Image = icon?.ToBitmap();
+                    }
+                }
+            }
+            catch
+            {
+                pb.BackColor = Color.LightGray;
+                pb.Image = null;
+            }
+        }
+        private void RemoveThumbnailByPath(string filePath)
+        {
+            try
+            {
+                var thumbnailToRemove = thumbnailPanel.Controls
+                    .OfType<PictureBox>()
+                    .FirstOrDefault(pb => pb.Tag?.ToString() == filePath);
 
-                        // Delete the files
-                        foreach (var file in filesToDelete)
-                        {
-                            try
-                            {
-                                File.Delete(file);
-                                RemoveThumbnailByPath(file);
-                                deletedCount++;
-                            }
-                            catch (Exception ex)
-                            {
-                                failedCount++;
-                                Debug.WriteLine($"Error deleting {file}: {ex.Message}");
-                            }
-                        }
-
-                        // Show result
-                        if (failedCount == 0)
-                        {
-                            MessageBox.Show($"Successfully deleted {deletedCount} file(s).\n\n" +
-                                           $"Kept: {Path.GetFileName(manualDuplicateFiles[manualSelectedIndex])}",
-                                           "Delete Complete",
-                                           MessageBoxButtons.OK,
-                                           MessageBoxIcon.Information);
-                        }
-                        else
-                        {
-                            MessageBox.Show($"Deleted {deletedCount} file(s).\n" +
-                                           $"Failed to delete {failedCount} file(s).",
-                                           "Delete Complete",
-                                           MessageBoxButtons.OK,
-                                           MessageBoxIcon.Warning);
-                        }
-
-                        // Hide panel and refresh
-                        HideManualDuplicatePanel();
-
-                        // Refresh main view
-                        if (currentDirectory != null && Directory.Exists(currentDirectory))
-                        {
-                            LoadDirectoryThumbnails(currentDirectory);
-                        }
+                if (thumbnailToRemove != null && !thumbnailToRemove.IsDisposed)
+                {
+                    if (thumbnailToRemove.InvokeRequired)
+                    {
+                        thumbnailToRemove.Invoke(new Action(() => SafeRemovePictureBox(thumbnailToRemove)));
+                    }
+                    else
+                    {
+                        SafeRemovePictureBox(thumbnailToRemove);
                     }
                 }
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Error deleting files: {ex.Message}",
-                    "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                Debug.WriteLine($"Error removing thumbnail: {ex.Message}");
             }
         }
 
-        private void RemoveThumbnailByPath(string filePath)
+        private void SafeRemovePictureBox(PictureBox pb)
         {
-            var thumbnailToRemove = thumbnailPanel.Controls
-                .OfType<PictureBox>()
-                .FirstOrDefault(pb => pb.Tag?.ToString() == filePath);
-
-            if (thumbnailToRemove != null)
+            try
             {
-                if (thumbnailToRemove.InvokeRequired)
+                // Suspend layout for performance
+                thumbnailPanel.SuspendLayout();
+
+                // Check again if not disposed
+                if (pb == null || pb.IsDisposed) return;
+
+                // Check if the control is still in the collection
+                if (!thumbnailPanel.Controls.Contains(pb)) return;
+
+                // First remove from parent
+                thumbnailPanel.Controls.Remove(pb);
+
+                // Then dispose image
+                if (pb.Image != null)
                 {
-                    thumbnailToRemove.Invoke(new Action(() =>
+                    try
                     {
-                        thumbnailToRemove.Image?.Dispose();
-                        thumbnailPanel.Controls.Remove(thumbnailToRemove);
-                        thumbnailToRemove.Dispose();
-                    }));
+                        pb.Image.Dispose();
+                    }
+                    catch { /* Ignore image dispose errors */ }
+                    pb.Image = null;
                 }
-                else
+
+                // Finally dispose the PictureBox
+                if (!pb.IsDisposed)
                 {
-                    thumbnailToRemove.Image?.Dispose();
-                    thumbnailPanel.Controls.Remove(thumbnailToRemove);
-                    thumbnailToRemove.Dispose();
+                    pb.Dispose();
                 }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Error in SafeRemovePictureBox: {ex.Message}");
+            }
+            finally
+            {
+                thumbnailPanel.ResumeLayout();
             }
         }
 
