@@ -20,6 +20,133 @@ namespace PictureRenameApp
         // new: track current directory shown in the thumbnail panel (null when none)
         private string? currentDirectory;
 
+        private List<string> filePaths = new List<string>();
+
+        // Form Duplicate variables
+        private List<string> manualDuplicateFiles = new List<string>();
+        private int manualSelectedIndex = 0;
+        private Panel manualDuplicatePanel = null;
+        private Button manualKeepSelectedButton = null;
+        private Button manualCancelButton = null;
+        private Label manualInstructionLabel = null;
+
+        public class BatchRenameDialog : Form
+        {
+            private TextBox txtBaseName;
+            private TextBox txtStartIndex;
+            private NumericUpDown numStartIndex;
+
+            public BatchRenameDialog()
+            {
+                InitializeComponent();
+            }
+
+            private void InitializeComponent()
+            {
+                this.StartPosition = FormStartPosition.CenterParent;
+                this.Width = 420;
+                this.Height = 220;
+                this.Text = "Batch Rename Files";
+                this.FormBorderStyle = FormBorderStyle.FixedDialog;
+                this.MinimizeBox = false;
+                this.MaximizeBox = false;
+
+                // Base name
+                var lblBase = new Label
+                {
+                    Left = 12,
+                    Top = 10,
+                    Width = 380,
+                    Text = "Base name (will be used as: BaseName_001.ext):"
+                };
+
+                txtBaseName = new TextBox
+                {
+                    Left = 12,
+                    Top = 32,
+                    Width = 380,
+                    Text = "Image"
+                };
+                txtBaseName.SelectAll();
+
+                // Start index
+                var lblIndex = new Label
+                {
+                    Left = 12,
+                    Top = 62,
+                    Width = 120,
+                    Text = "Start index:"
+                };
+
+                numStartIndex = new NumericUpDown
+                {
+                    Left = 140,
+                    Top = 58,
+                    Width = 80,
+                    Minimum = 0,
+                    Maximum = 9999,
+                    Value = 1
+                };
+
+                // Preview label
+                var lblPreview = new Label
+                {
+                    Left = 12,
+                    Top = 92,
+                    Width = 380,
+                    Text = "Preview: Image_001.jpg, Image_002.jpg, ...",
+                    ForeColor = Color.Gray
+                };
+
+                // Update preview when values change
+                txtBaseName.TextChanged += (s, e) => UpdatePreview(lblPreview);
+                numStartIndex.ValueChanged += (s, e) => UpdatePreview(lblPreview);
+
+                // Buttons
+                var btnOk = new Button
+                {
+                    Text = "Rename",
+                    Left = 232,
+                    Width = 80,
+                    Top = 132,
+                    DialogResult = DialogResult.OK
+                };
+
+                var btnCancel = new Button
+                {
+                    Text = "Cancel",
+                    Left = 320,
+                    Width = 80,
+                    Top = 132,
+                    DialogResult = DialogResult.Cancel
+                };
+
+                this.Controls.AddRange(new Control[] {
+            lblBase, txtBaseName, lblIndex, numStartIndex, lblPreview, btnOk, btnCancel
+        });
+
+                this.AcceptButton = btnOk;
+                this.CancelButton = btnCancel;
+
+                UpdatePreview(lblPreview);
+            }
+
+            private void UpdatePreview(Label previewLabel)
+            {
+                var baseName = string.IsNullOrWhiteSpace(txtBaseName.Text) ? "Image" : txtBaseName.Text.Trim();
+                var start = (int)numStartIndex.Value;
+                previewLabel.Text = $"Preview: {baseName}_{start:D3}.jpg, {baseName}_{start + 1:D3}.jpg, ...";
+            }
+
+            public RenameOptions GetOptions()
+            {
+                return new RenameOptions
+                {
+                    BaseName = string.IsNullOrWhiteSpace(txtBaseName.Text) ? "Image" : txtBaseName.Text.Trim(),
+                    StartIndex = (int)numStartIndex.Value
+                };
+            }
+        }
         public class RenameOptions
         {
             public string BaseName { get; set; } = "Image";
@@ -34,7 +161,85 @@ namespace PictureRenameApp
             public string DestinationPath { get; set; } = string.Empty;
             public string Error { get; set; } = string.Empty;
         }
+         // Custom dialog for single rename
+        public class SingleRenameDialog : Form
+        {
+            public string NewFileName { get; private set; } = string.Empty;
+            private TextBox txtFileName;
 
+            public SingleRenameDialog(string defaultName)
+            {
+                InitializeComponent(defaultName);
+            }
+
+            private void InitializeComponent(string defaultName)
+            {
+                this.StartPosition = FormStartPosition.CenterParent;
+                this.Width = 420;
+                this.Height = 150;
+                this.Text = "Rename File";
+                this.FormBorderStyle = FormBorderStyle.FixedDialog;
+                this.MinimizeBox = false;
+                this.MaximizeBox = false;
+
+                var lbl = new Label
+                {
+                    Left = 12,
+                    Top = 10,
+                    Width = 380,
+                    Text = "Enter new name (without extension):"
+                };
+
+                txtFileName = new TextBox
+                {
+                    Left = 12,
+                    Top = 32,
+                    Width = 380,
+                    Text = defaultName
+                };
+                txtFileName.SelectAll();
+
+                var btnOk = new Button
+                {
+                    Text = "Rename",
+                    Left = 232,
+                    Width = 80,
+                    Top = 64,
+                    DialogResult = DialogResult.OK
+                };
+
+                var btnCancel = new Button
+                {
+                    Text = "Cancel",
+                    Left = 320,
+                    Width = 80,
+                    Top = 64,
+                    DialogResult = DialogResult.Cancel
+                };
+
+                this.Controls.AddRange(new Control[] { lbl, txtFileName, btnOk, btnCancel });
+                this.AcceptButton = btnOk;
+                this.CancelButton = btnCancel;
+
+                btnOk.Click += (s, e) =>
+                {
+                    NewFileName = txtFileName.Text.Trim();
+                    if (string.IsNullOrWhiteSpace(NewFileName))
+                    {
+                        MessageBox.Show("Please enter a valid file name.",
+                            "Invalid Name", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                        this.DialogResult = DialogResult.None;
+                    }
+                };
+            }
+        }
+        // Helper class for duplicate groups
+        public class DuplicateGroup
+        {
+            public string Hash { get; set; }
+            public List<string> FilePaths { get; set; } = new List<string>();
+            public int SelectedIndex { get; set; } = 0;
+        }
 
         public Form1()
         {
@@ -49,7 +254,7 @@ namespace PictureRenameApp
             topToolStrip.Items.Add(new ToolStripButton(" 📂 Open Map", null, OpenFolder_Click));
             topToolStrip.Items.Add(new ToolStripSeparator());
             topToolStrip.Items.Add(new ToolStripButton(" ✂️ Rename", null, RenameButton_Click));
-            topToolStrip.Items.Add(new ToolStripButton(" 🔍 Duplicates", null, FindDuplicates_Click));
+            topToolStrip.Items.Add(new ToolStripButton(" 🔍 Duplicates", null, FindDuplicatesManual_Click));
             topToolStrip.Items.Add(new ToolStripSeparator());
             topToolStrip.Items.Add(new ToolStripButton(" 🗑️ Delete", null, ClearAll_Click));
             topToolStrip.Items.Add(new ToolStripButton(" ⚙️ Settings", null, Settings_Click));
@@ -581,79 +786,6 @@ namespace PictureRenameApp
             return result;
         }
 
-        // Custom dialog for single rename
-        public class SingleRenameDialog : Form
-        {
-            public string NewFileName { get; private set; } = string.Empty;
-            private TextBox txtFileName;
-
-            public SingleRenameDialog(string defaultName)
-            {
-                InitializeComponent(defaultName);
-            }
-
-            private void InitializeComponent(string defaultName)
-            {
-                this.StartPosition = FormStartPosition.CenterParent;
-                this.Width = 420;
-                this.Height = 150;
-                this.Text = "Rename File";
-                this.FormBorderStyle = FormBorderStyle.FixedDialog;
-                this.MinimizeBox = false;
-                this.MaximizeBox = false;
-
-                var lbl = new Label
-                {
-                    Left = 12,
-                    Top = 10,
-                    Width = 380,
-                    Text = "Enter new name (without extension):"
-                };
-
-                txtFileName = new TextBox
-                {
-                    Left = 12,
-                    Top = 32,
-                    Width = 380,
-                    Text = defaultName
-                };
-                txtFileName.SelectAll();
-
-                var btnOk = new Button
-                {
-                    Text = "Rename",
-                    Left = 232,
-                    Width = 80,
-                    Top = 64,
-                    DialogResult = DialogResult.OK
-                };
-
-                var btnCancel = new Button
-                {
-                    Text = "Cancel",
-                    Left = 320,
-                    Width = 80,
-                    Top = 64,
-                    DialogResult = DialogResult.Cancel
-                };
-
-                this.Controls.AddRange(new Control[] { lbl, txtFileName, btnOk, btnCancel });
-                this.AcceptButton = btnOk;
-                this.CancelButton = btnCancel;
-
-                btnOk.Click += (s, e) =>
-                {
-                    NewFileName = txtFileName.Text.Trim();
-                    if (string.IsNullOrWhiteSpace(NewFileName))
-                    {
-                        MessageBox.Show("Please enter a valid file name.",
-                            "Invalid Name", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                        this.DialogResult = DialogResult.None;
-                    }
-                };
-            }
-        }
-
         // Batch rename handling
         private void HandleBatchRename(List<string> selectedFiles)
         {
@@ -683,124 +815,6 @@ namespace PictureRenameApp
         }
 
         // Custom dialog for batch rename
-        public class BatchRenameDialog : Form
-        {
-            private TextBox txtBaseName;
-            private TextBox txtStartIndex;
-            private NumericUpDown numStartIndex;
-
-            public BatchRenameDialog()
-            {
-                InitializeComponent();
-            }
-
-            private void InitializeComponent()
-            {
-                this.StartPosition = FormStartPosition.CenterParent;
-                this.Width = 420;
-                this.Height = 220;
-                this.Text = "Batch Rename Files";
-                this.FormBorderStyle = FormBorderStyle.FixedDialog;
-                this.MinimizeBox = false;
-                this.MaximizeBox = false;
-
-                // Base name
-                var lblBase = new Label
-                {
-                    Left = 12,
-                    Top = 10,
-                    Width = 380,
-                    Text = "Base name (will be used as: BaseName_001.ext):"
-                };
-
-                txtBaseName = new TextBox
-                {
-                    Left = 12,
-                    Top = 32,
-                    Width = 380,
-                    Text = "Image"
-                };
-                txtBaseName.SelectAll();
-
-                // Start index
-                var lblIndex = new Label
-                {
-                    Left = 12,
-                    Top = 62,
-                    Width = 120,
-                    Text = "Start index:"
-                };
-
-                numStartIndex = new NumericUpDown
-                {
-                    Left = 140,
-                    Top = 58,
-                    Width = 80,
-                    Minimum = 0,
-                    Maximum = 9999,
-                    Value = 1
-                };
-
-                // Preview label
-                var lblPreview = new Label
-                {
-                    Left = 12,
-                    Top = 92,
-                    Width = 380,
-                    Text = "Preview: Image_001.jpg, Image_002.jpg, ...",
-                    ForeColor = Color.Gray
-                };
-
-                // Update preview when values change
-                txtBaseName.TextChanged += (s, e) => UpdatePreview(lblPreview);
-                numStartIndex.ValueChanged += (s, e) => UpdatePreview(lblPreview);
-
-                // Buttons
-                var btnOk = new Button
-                {
-                    Text = "Rename",
-                    Left = 232,
-                    Width = 80,
-                    Top = 132,
-                    DialogResult = DialogResult.OK
-                };
-
-                var btnCancel = new Button
-                {
-                    Text = "Cancel",
-                    Left = 320,
-                    Width = 80,
-                    Top = 132,
-                    DialogResult = DialogResult.Cancel
-                };
-
-                this.Controls.AddRange(new Control[] {
-            lblBase, txtBaseName, lblIndex, numStartIndex, lblPreview, btnOk, btnCancel
-        });
-
-                this.AcceptButton = btnOk;
-                this.CancelButton = btnCancel;
-
-                UpdatePreview(lblPreview);
-            }
-
-            private void UpdatePreview(Label previewLabel)
-            {
-                var baseName = string.IsNullOrWhiteSpace(txtBaseName.Text) ? "Image" : txtBaseName.Text.Trim();
-                var start = (int)numStartIndex.Value;
-                previewLabel.Text = $"Preview: {baseName}_{start:D3}.jpg, {baseName}_{start + 1:D3}.jpg, ...";
-            }
-
-            public RenameOptions GetOptions()
-            {
-                return new RenameOptions
-                {
-                    BaseName = string.IsNullOrWhiteSpace(txtBaseName.Text) ? "Image" : txtBaseName.Text.Trim(),
-                    StartIndex = (int)numStartIndex.Value
-                };
-            }
-        }
-
         private List<RenameResult> RenameMultipleFiles(List<string> files, RenameOptions options)
         {
             var results = new List<RenameResult>();
@@ -972,10 +986,430 @@ namespace PictureRenameApp
                 LoadDirectoryThumbnails(directory);
             }
         }
-        private void FindDuplicates_Click(object sender, EventArgs e)
+
+        private void FindDuplicatesManual_Click(object sender, EventArgs e)
         {
-            MessageBox.Show("Duplicaten zoeken wordt later geïmplementeerd");
+            try
+            {
+                // Get selected files
+                var selectedFiles = GetSelectedThumbnailFilePaths();
+
+                // Check if we have at least 2 selected files
+                if (selectedFiles.Count < 2)
+                {
+                    MessageBox.Show("Please select at least 2 files to find duplicates.\n\n" +
+                        "Hold Ctrl and click to select multiple files.",
+                        "Manual Duplicate Selection",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Information);
+                    return;
+                }
+
+                // Store selected files
+                manualDuplicateFiles = selectedFiles;
+                manualSelectedIndex = 0; // First file selected by default
+
+                // Show manual duplicate panel
+                ShowManualDuplicatePanel();
+
+                // Show instruction
+                MessageBox.Show("Select which version you want to keep, then click 'Keep Selected & Delete Others'.",
+                    "Manual Duplicate Selection",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error: {ex.Message}",
+                    "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
         }
+
+        private void ShowManualDuplicatePanel()
+        {
+            // Create panel if it doesn't exist
+            if (manualDuplicatePanel == null)
+            {
+                manualDuplicatePanel = new Panel
+                {
+                    Dock = DockStyle.Bottom,
+                    Height = 350,
+                    BackColor = Color.FromArgb(240, 240, 240),
+                    BorderStyle = BorderStyle.FixedSingle,
+                    Visible = false
+                };
+
+                // Title
+                var titleLabel = new Label
+                {
+                    Text = "Manual Duplicate Selection",
+                    Font = new Font("Segoe UI", 12, FontStyle.Bold),
+                    Location = new Point(10, 10),
+                    AutoSize = true
+                };
+                manualDuplicatePanel.Controls.Add(titleLabel);
+
+                // Instruction label
+                manualInstructionLabel = new Label
+                {
+                    Text = "Click on a thumbnail to select the version you want to keep",
+                    Location = new Point(10, 35),
+                    AutoSize = true,
+                    ForeColor = Color.DarkBlue
+                };
+                manualDuplicatePanel.Controls.Add(manualInstructionLabel);
+
+                // Progress label
+                var progressLabel = new Label
+                {
+                    Text = $"Files selected: {manualDuplicateFiles.Count}",
+                    Location = new Point(10, 55),
+                    AutoSize = true,
+                    ForeColor = Color.Gray
+                };
+                manualDuplicatePanel.Controls.Add(progressLabel);
+
+                // Keep Selected button
+                manualKeepSelectedButton = new Button
+                {
+                    Text = "Keep Selected & Delete Others",
+                    Location = new Point(manualDuplicatePanel.Width - 200, manualDuplicatePanel.Height - 40),
+                    Size = new Size(180, 30),
+                    BackColor = Color.FromArgb(0, 120, 215),
+                    ForeColor = Color.White,
+                    FlatStyle = FlatStyle.Flat,
+                    Enabled = true
+                };
+                manualKeepSelectedButton.FlatAppearance.BorderSize = 0;
+                manualKeepSelectedButton.Click += ManualKeepSelectedButton_Click;
+                manualDuplicatePanel.Controls.Add(manualKeepSelectedButton);
+
+                // Cancel button
+                manualCancelButton = new Button
+                {
+                    Text = "Cancel",
+                    Location = new Point(manualDuplicatePanel.Width - 390, manualDuplicatePanel.Height - 40),
+                    Size = new Size(180, 30),
+                    UseVisualStyleBackColor = true
+                };
+                manualCancelButton.Click += (s, e) => HideManualDuplicatePanel();
+                manualDuplicatePanel.Controls.Add(manualCancelButton);
+
+                this.Controls.Add(manualDuplicatePanel);
+            }
+
+            // Update button positions
+            manualKeepSelectedButton.Location = new Point(manualDuplicatePanel.Width - 200, manualDuplicatePanel.Height - 40);
+            manualCancelButton.Location = new Point(manualDuplicatePanel.Width - 390, manualDuplicatePanel.Height - 40);
+
+            // Show the panel
+            manualDuplicatePanel.Visible = true;
+            this.Height += manualDuplicatePanel.Height;
+
+            // Load thumbnails
+            LoadManualDuplicateThumbnails();
+        }
+
+        private void LoadManualDuplicateThumbnails()
+        {
+            try
+            {
+                // Clear previous thumbnails (except the fixed controls)
+                ClearManualDuplicatePreview();
+
+                // Show up to 16 thumbnails
+                var filesToShow = manualDuplicateFiles.Take(16).ToList();
+                int cols = Math.Min(4, (int)Math.Ceiling(Math.Sqrt(filesToShow.Count)));
+
+                int thumbSize = 120;
+                int startX = 10;
+                int startY = 80;
+                int padding = 10;
+
+                for (int i = 0; i < filesToShow.Count; i++)
+                {
+                    int row = i / cols;
+                    int col = i % cols;
+
+                    int x = startX + col * (thumbSize + padding);
+                    int y = startY + row * (thumbSize + padding + 20);
+
+                    // Create thumbnail PictureBox
+                    var pb = new PictureBox
+                    {
+                        Size = new Size(thumbSize, thumbSize),
+                        Location = new Point(x, y),
+                        SizeMode = PictureBoxSizeMode.Zoom,
+                        BorderStyle = BorderStyle.FixedSingle,
+                        BackColor = i == manualSelectedIndex ? Color.LightBlue : Color.White,
+                        Tag = filesToShow[i],
+                        Cursor = Cursors.Hand
+                    };
+
+                    // Load thumbnail
+                    LoadManualThumbnail(pb, filesToShow[i]);
+
+                    // Click event for selection
+                    pb.Click += (s, e) =>
+                    {
+                        var clickedPb = s as PictureBox;
+                        if (clickedPb?.Tag is string filePath)
+                        {
+                            // Update selected index
+                            int newIndex = filesToShow.IndexOf(filePath);
+                            if (newIndex >= 0)
+                            {
+                                manualSelectedIndex = newIndex;
+
+                                // Refresh thumbnails to show new selection
+                                LoadManualDuplicateThumbnails();
+
+                                // Update instruction
+                                manualInstructionLabel.Text = $"Selected: {Path.GetFileName(filePath)}";
+                            }
+                        }
+                    };
+
+                    // Double-click to preview
+                    pb.DoubleClick += (s, e) =>
+                    {
+                        if ((s as PictureBox)?.Tag is string filePath)
+                        {
+                            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                            {
+                                FileName = filePath,
+                                UseShellExecute = true
+                            });
+                        }
+                    };
+
+                    manualDuplicatePanel.Controls.Add(pb);
+
+                    // Filename label
+                    var label = new Label
+                    {
+                        Text = TruncateFilename(Path.GetFileName(filesToShow[i]), 15),
+                        Location = new Point(x, y + thumbSize + 2),
+                        Size = new Size(thumbSize, 18),
+                        TextAlign = ContentAlignment.MiddleCenter,
+                        Font = new Font("Segoe UI", 7),
+                        Tag = filesToShow[i]
+                    };
+                    manualDuplicatePanel.Controls.Add(label);
+                }
+
+                // Adjust panel height if needed
+                int contentBottom = startY + (int)Math.Ceiling((double)filesToShow.Count / cols) * (thumbSize + padding + 20) + 30;
+                if (contentBottom > manualDuplicatePanel.Height - 50)
+                {
+                    manualDuplicatePanel.Height = contentBottom + 50;
+                    this.Height += (contentBottom + 50) - (manualDuplicatePanel.Height - 50);
+
+                    // Update button positions
+                    manualKeepSelectedButton.Top = manualDuplicatePanel.Height - 40;
+                    manualCancelButton.Top = manualDuplicatePanel.Height - 40;
+                }
+
+                // Update progress label
+                var progressLabel = manualDuplicatePanel.Controls
+                    .OfType<Label>()
+                    .FirstOrDefault(l => l.Text.StartsWith("Files selected:"));
+                if (progressLabel != null)
+                {
+                    progressLabel.Text = $"Files selected: {manualDuplicateFiles.Count}  |  Selected to keep: {Path.GetFileName(manualDuplicateFiles[manualSelectedIndex])}";
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error loading thumbnails: {ex.Message}",
+                    "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private void LoadManualThumbnail(PictureBox pb, string filePath)
+        {
+            try
+            {
+                // Check if it's an image file
+                string[] imageExtensions = { ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tiff", ".webp" };
+                string extension = Path.GetExtension(filePath).ToLowerInvariant();
+
+                if (imageExtensions.Contains(extension))
+                {
+                    using (var img = Image.FromFile(filePath))
+                    {
+                        pb.Image = img.GetThumbnailImage(100, 100, null, IntPtr.Zero);
+                    }
+                }
+                else
+                {
+                    using (var icon = Icon.ExtractAssociatedIcon(filePath))
+                    {
+                        pb.Image = icon?.ToBitmap();
+                    }
+                }
+            }
+            catch
+            {
+                pb.BackColor = Color.LightGray;
+                pb.Image = null;
+            }
+        }
+
+        private void ClearManualDuplicatePreview()
+        {
+            var controlsToRemove = manualDuplicatePanel.Controls
+                .OfType<Control>()
+                .Where(c => c != manualInstructionLabel &&
+                            c != manualKeepSelectedButton &&
+                            c != manualCancelButton &&
+                            !(c is Label && (c.Text == "Manual Duplicate Selection" || c.Text.StartsWith("Files selected:"))))
+                .ToList();
+
+            foreach (var control in controlsToRemove)
+            {
+                if (control is PictureBox pb)
+                {
+                    pb.Image?.Dispose();
+                }
+                manualDuplicatePanel.Controls.Remove(control);
+                control.Dispose();
+            }
+        }
+
+        private void HideManualDuplicatePanel()
+        {
+            if (manualDuplicatePanel != null && manualDuplicatePanel.Visible)
+            {
+                manualDuplicatePanel.Visible = false;
+                this.Height -= manualDuplicatePanel.Height;
+                ClearManualDuplicatePreview();
+            }
+        }
+
+        private void ManualKeepSelectedButton_Click(object sender, EventArgs e)
+        {
+            try
+            {
+                if (manualDuplicateFiles.Count == 0) return;
+
+                var filesToDelete = new List<string>();
+
+                // Get all files except the selected one
+                for (int i = 0; i < manualDuplicateFiles.Count; i++)
+                {
+                    if (i != manualSelectedIndex)
+                    {
+                        filesToDelete.Add(manualDuplicateFiles[i]);
+                    }
+                }
+
+                if (filesToDelete.Any())
+                {
+                    // Create confirmation message
+                    string message = filesToDelete.Count == 1
+                        ? $"Are you sure you want to delete 1 file?\n\n" +
+                          $"Keeping: {Path.GetFileName(manualDuplicateFiles[manualSelectedIndex])}\n" +
+                          $"Deleting: {Path.GetFileName(filesToDelete[0])}"
+                        : $"Are you sure you want to delete {filesToDelete.Count} files?\n\n" +
+                          $"Keeping: {Path.GetFileName(manualDuplicateFiles[manualSelectedIndex])}\n" +
+                          $"Deleting:\n{string.Join("\n", filesToDelete.Select(f => "• " + Path.GetFileName(f)).Take(5))}" +
+                          (filesToDelete.Count > 5 ? $"\n... and {filesToDelete.Count - 5} more" : "");
+
+                    var result = MessageBox.Show(message,
+                        "Confirm Delete",
+                        MessageBoxButtons.YesNo,
+                        MessageBoxIcon.Warning);
+
+                    if (result == DialogResult.Yes)
+                    {
+                        int deletedCount = 0;
+                        int failedCount = 0;
+
+                        // Delete the files
+                        foreach (var file in filesToDelete)
+                        {
+                            try
+                            {
+                                File.Delete(file);
+                                RemoveThumbnailByPath(file);
+                                deletedCount++;
+                            }
+                            catch (Exception ex)
+                            {
+                                failedCount++;
+                                Debug.WriteLine($"Error deleting {file}: {ex.Message}");
+                            }
+                        }
+
+                        // Show result
+                        if (failedCount == 0)
+                        {
+                            MessageBox.Show($"Successfully deleted {deletedCount} file(s).\n\n" +
+                                           $"Kept: {Path.GetFileName(manualDuplicateFiles[manualSelectedIndex])}",
+                                           "Delete Complete",
+                                           MessageBoxButtons.OK,
+                                           MessageBoxIcon.Information);
+                        }
+                        else
+                        {
+                            MessageBox.Show($"Deleted {deletedCount} file(s).\n" +
+                                           $"Failed to delete {failedCount} file(s).",
+                                           "Delete Complete",
+                                           MessageBoxButtons.OK,
+                                           MessageBoxIcon.Warning);
+                        }
+
+                        // Hide panel and refresh
+                        HideManualDuplicatePanel();
+
+                        // Refresh main view
+                        if (currentDirectory != null && Directory.Exists(currentDirectory))
+                        {
+                            LoadDirectoryThumbnails(currentDirectory);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error deleting files: {ex.Message}",
+                    "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private void RemoveThumbnailByPath(string filePath)
+        {
+            var thumbnailToRemove = thumbnailPanel.Controls
+                .OfType<PictureBox>()
+                .FirstOrDefault(pb => pb.Tag?.ToString() == filePath);
+
+            if (thumbnailToRemove != null)
+            {
+                if (thumbnailToRemove.InvokeRequired)
+                {
+                    thumbnailToRemove.Invoke(new Action(() =>
+                    {
+                        thumbnailToRemove.Image?.Dispose();
+                        thumbnailPanel.Controls.Remove(thumbnailToRemove);
+                        thumbnailToRemove.Dispose();
+                    }));
+                }
+                else
+                {
+                    thumbnailToRemove.Image?.Dispose();
+                    thumbnailPanel.Controls.Remove(thumbnailToRemove);
+                    thumbnailToRemove.Dispose();
+                }
+            }
+        }
+
+        private string TruncateFilename(string filename, int maxLength)
+        {
+            if (filename.Length <= maxLength) return filename;
+            return filename.Substring(0, maxLength - 3) + "...";
+        }
+
 
         private void ClearAll_Click(object sender, EventArgs e)
         {
