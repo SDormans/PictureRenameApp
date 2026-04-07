@@ -32,3 +32,17 @@ C:\Users\stino\source\repos\SDormans\PictureRenameApp\obj\Debug\net8.0-windows\P
 C:\Users\stino\source\repos\SDormans\PictureRenameApp\obj\Debug\net8.0-windows\PictureRenameApp.genruntimeconfig.cache
 C:\Users\stino\source\repos\SDormans\PictureRenameApp\obj\Debug\net8.0-windows\ref\PictureRenameApp.dll
 C:\Users\stino\source\repos\SDormans\PictureRenameApp\obj\Debug\net8.0-windows\PictureRenameApp.Properties.Resources.resources
+C:\Users\stino\source\repos\SDormans\PictureRenameApp\obj\Debug\net8.0-windows\PictureRenameApp.csproj.AssemblyReference.cache
+C:\Users\stino\source\repos\SDormans\PictureRenameApp\bin\Debug\net8.0-windows\Microsoft.Extensions.Configuration.dll
+C:\Users\stino\source\repos\SDormans\PictureRenameApp\bin\Debug\net8.0-windows\Microsoft.Extensions.Configuration.Abstractions.dll
+C:\Users\stino\source\repos\SDormans\PictureRenameApp\bin\Debug\net8.0-windows\Microsoft.Extensions.Configuration.Binder.dll
+C:\Users\stino\source\repos\SDormans\PictureRenameApp\bin\Debug\net8.0-windows\Microsoft.Extensions.DependencyInjection.dll
+C:\Users\stino\source\repos\SDormans\PictureRenameApp\bin\Debug\net8.0-windows\Microsoft.Extensions.DependencyInjection.Abstractions.dll
+C:\Users\stino\source\repos\SDormans\PictureRenameApp\bin\Debug\net8.0-windows\Microsoft.Extensions.Logging.dll
+C:\Users\stino\source\repos\SDormans\PictureRenameApp\bin\Debug\net8.0-windows\Microsoft.Extensions.Logging.Abstractions.dll
+C:\Users\stino\source\repos\SDormans\PictureRenameApp\bin\Debug\net8.0-windows\Microsoft.Extensions.Logging.Configuration.dll
+C:\Users\stino\source\repos\SDormans\PictureRenameApp\bin\Debug\net8.0-windows\Microsoft.Extensions.Logging.Console.dll
+C:\Users\stino\source\repos\SDormans\PictureRenameApp\bin\Debug\net8.0-windows\Microsoft.Extensions.Options.dll
+C:\Users\stino\source\repos\SDormans\PictureRenameApp\bin\Debug\net8.0-windows\Microsoft.Extensions.Options.ConfigurationExtensions.dll
+C:\Users\stino\source\repos\SDormans\PictureRenameApp\bin\Debug\net8.0-windows\Microsoft.Extensions.Primitives.dll
+C:\Users\stino\source\repos\SDormans\PictureRenameApp\obj\Debug\net8.0-windows\PictureR.979DDF00.Up2Date
