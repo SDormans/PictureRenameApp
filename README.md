@@ -156,7 +156,6 @@ Result: Only C:\Photos\beach.jpg remains
 - [ ] Content-based duplicate detection (hash)
 - [ ] Recycle Bin support
 - [ ] Undo/Redo functionality
-- [ ] Export reports (CSV/PDF)
 ---
 
 ## 📜 License
