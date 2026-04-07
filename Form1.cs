@@ -166,8 +166,8 @@ namespace PictureRenameApp
             {
                 try
                 {
-                    pb.Image?.Dispose();
                     thumbnailPanel.Controls.Remove(pb);
+                    pb.Image?.Dispose();
                     pb.Dispose();
                 }
                 catch (Exception ex)
