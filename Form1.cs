@@ -1,47 +1,83 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Drawing;
-using System.Windows.Forms;
-using System.IO;
-using System.Linq;
-using PictureRenameApp.Services;
+﻿using PictureRenameApp.Services;
+using PictureRenameApp.Models;
+using PictureRenameApp.Controllers;
+using PictureRenameApp.UI;
+using System.Drawing.Drawing2D;
 using PictureRenameApp.Utilities;
 
 namespace PictureRenameApp
 {
     /// <summary>
     /// Main application form for the Picture Rename application.
-    /// Handles UI interactions, file management, and renaming operations.
+    /// Delegates business logic to the controller (MVC pattern) and UI operations to specialized handlers.
+    /// Responsibilities: Coordinate UI components, handle user input, display data.
     /// </summary>
     public partial class Form1 : Form
     {
-        // Injected services
-        private readonly IApplicationLogger _logger;
-        private readonly IImageService _imageService;
-        private readonly IFileService _fileService;
+        /// <summary>
+        /// Test-friendly constructor that allows skipping UI initialization.
+        /// When <paramref name="initializeComponents"/> is false the form will not
+        /// create UI controls or wire up managers. This is intended for unit tests
+        /// that need to call non-UI logic such as `CreateThumbnailImage` without
+        /// requiring a Windows message loop.
+        /// </summary>
+        public Form1(IApplicationLogger logger, IApplicationController controller, bool initializeComponents)
+        {
+            // Basic validation and minimal wiring for logic-only usage in tests
+            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _controller = controller ?? throw new ArgumentNullException(nameof(controller));
+            _model = controller.GetModel() ?? throw new ArgumentNullException(nameof(_model));
 
-        // UI state
-        private string? _currentDirectory;
+            if (initializeComponents)
+            {
+                InitializeComponent();
+
+                _thumbnailPanelManager = new ThumbnailPanelManager(thumbnailPanel, _thumbnailSize, _logger);
+                _thumbnailSelector = new ThumbnailSelector(_model, _logger);
+                _fileInteractionHandler = new FileInteractionHandler(_logger);
+
+                _logger.LogInfo("Application started");
+
+                InitializeCustomControls();
+                SubscribeToModelChanges();
+                ShowPlaceholder();
+            }
+        }
+
+        // Injected dependencies
+        private readonly IApplicationLogger _logger;
+        private readonly IApplicationController _controller;
+        private readonly IApplicationModel _model;
+        private readonly IThumbnailPanelManager _thumbnailPanelManager;
+        private readonly IThumbnailSelector _thumbnailSelector;
+        private readonly IFileInteractionHandler _fileInteractionHandler;
+
+        // UI configuration
         private readonly Size _thumbnailSize = new Size(128, 128);
 
         /// <summary>
         /// Initializes a new instance of Form1 with dependency-injected services.
         /// </summary>
         /// <param name="logger">Logger for application diagnostics</param>
-        /// <param name="imageService">Service for image operations</param>
-        /// <param name="fileService">Service for file operations</param>
-        public Form1(IApplicationLogger logger, IImageService imageService, IFileService fileService)
+        /// <param name="controller">Application controller for business logic</param>
+        public Form1(IApplicationLogger? logger, IApplicationController? controller)
         {
             InitializeComponent();
 
-            // Store injected dependencies
+            // Validate and store dependencies
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-            _imageService = imageService ?? throw new ArgumentNullException(nameof(imageService));
-            _fileService = fileService ?? throw new ArgumentNullException(nameof(fileService));
+            _controller = controller ?? throw new ArgumentNullException(nameof(controller));
+            _model = controller?.GetModel() ?? throw new ArgumentNullException(nameof(_model));
+
+            // Initialize UI component handlers
+            _thumbnailPanelManager = new ThumbnailPanelManager(thumbnailPanel, _thumbnailSize, _logger);
+            _thumbnailSelector = new ThumbnailSelector(_model, _logger);
+            _fileInteractionHandler = new FileInteractionHandler(_logger);
 
             _logger.LogInfo("Application started");
 
             InitializeCustomControls();
+            SubscribeToModelChanges();
             ShowPlaceholder();
         }
 
@@ -69,123 +105,87 @@ namespace PictureRenameApp
             }
         }
 
+        // Debounce timer to prevent multiple concurrent RefreshThumbnailsUI calls during batch loading
+        private System.Windows.Forms.Timer? _refreshDebounceTimer;
+        private const int RefreshDebounceMs = 100;
+
         /// <summary>
-        /// Loads and displays thumbnail images for a directory.
+        /// Subscribes to model change notifications for UI updates.
+        /// Uses debouncing to prevent race conditions during rapid collection changes.
         /// </summary>
-        /// <param name="directoryPath">Full path to directory to scan</param>
-        private void LoadDirectoryThumbnails(string directoryPath)
+        private void SubscribeToModelChanges()
         {
-            if (string.IsNullOrWhiteSpace(directoryPath) || !Directory.Exists(directoryPath))
+            _model.Thumbnails.CollectionChanged += (sender, e) => DebounceRefreshThumbnailsUI();
+        }
+
+        /// <summary>
+        /// Debounces RefreshThumbnailsUI to prevent concurrent disposal issues.
+        /// Resets the timer on each collection change, ensuring refresh only occurs after a quiet period.
+        /// </summary>
+        private void DebounceRefreshThumbnailsUI()
+        {
+            // Stop existing timer if running
+            _refreshDebounceTimer?.Stop();
+            _refreshDebounceTimer?.Dispose();
+
+            // Create new timer to refresh after debounce period
+            _refreshDebounceTimer = new System.Windows.Forms.Timer
             {
-                _logger.LogWarning($"Invalid directory path: {directoryPath}");
-                _currentDirectory = null;
-                ShowPlaceholder();
+                Interval = RefreshDebounceMs
+            };
+
+            _refreshDebounceTimer.Tick += (s, e) =>
+            {
+                _refreshDebounceTimer.Stop();
+                RefreshThumbnailsUI();
+            };
+
+            _refreshDebounceTimer.Start();
+        }
+
+        /// <summary>
+        /// Refreshes the thumbnail panel UI based on model state.
+        /// Thread-safe: Uses Invoke to marshal calls to the UI thread.
+        /// </summary>
+        private void RefreshThumbnailsUI()
+        {
+            if (InvokeRequired)
+            {
+                Invoke((Action)RefreshThumbnailsUI);
                 return;
             }
 
             try
             {
-                _logger.LogInfo($"Loading directory: {directoryPath}");
-                _currentDirectory = directoryPath;
+                _thumbnailPanelManager.Clear();
 
-                ClearThumbnails();
-
-                var files = _fileService.GetImageFilesInDirectory(directoryPath);
-
-                if (files.Count == 0)
+                foreach (var thumbnail in _model.Thumbnails)
                 {
-                    _logger.LogInfo("No images found in directory");
-                    metadataTextBox.Text = "No images in this directory.";
-                    previewPictureBox.Image?.Dispose();
-                    previewPictureBox.Image = null;
-                    ShowPlaceholder();
-                    return;
+                    _thumbnailPanelManager.AddThumbnail(
+                        thumbnail,
+                        Thumbnail_Click,
+                        Thumbnail_DoubleClick);
                 }
 
-                HidePlaceholder();
-
-                foreach (var file in files)
-                {
-                    try
-                    {
-                        var thumb = _imageService.CreateThumbnailImage(file, _thumbnailSize) 
-                            ?? new Bitmap(_thumbnailSize.Width, _thumbnailSize.Height);
-                        
-                        var pb = new PictureBox
-                        {
-                            Width = _thumbnailSize.Width + 8,
-                            Height = _thumbnailSize.Height + 8,
-                            SizeMode = PictureBoxSizeMode.CenterImage,
-                            Image = thumb,
-                            Tag = file,
-                            Padding = new Padding(4),
-                            Cursor = Cursors.Hand,
-                            BackColor = Color.White,
-                            BorderStyle = BorderStyle.FixedSingle
-                        };
-
-                        pb.Click += Thumbnail_Click;
-                        pb.DoubleClick += Thumbnail_DoubleClick;
-
-                        var tooltip = new ToolTip();
-                        tooltip.SetToolTip(pb, file);
-                        thumbnailPanel.Controls.Add(pb);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError($"Failed to create thumbnail for {Path.GetFileName(file)}", ex);
-                    }
-                }
-
-                // Select and display first thumbnail
-                var firstPb = thumbnailPanel.Controls.OfType<PictureBox>().FirstOrDefault();
-                if (firstPb != null)
-                {
-                    firstPb.BackColor = Color.LightBlue;
-                    DisplayImagePreview(firstPb.Tag as string ?? string.Empty);
-                    DisplayFileMetadata(firstPb.Tag as string ?? string.Empty);
-                }
-
-                _logger.LogInfo($"Successfully loaded {files.Count} thumbnails");
+                metadataTextBox.Text = _model.MetadataText;
             }
             catch (Exception ex)
             {
-                _logger.LogError($"Error loading directory thumbnails", ex);
-                MessageBox.Show("Failed to load directory. Please check the logs for details.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                ShowPlaceholder();
+                _logger.LogError("Error refreshing thumbnails UI", ex);
             }
         }
 
-        /// <summary>
-        /// Clears all thumbnail controls and resets directory tracking.
-        /// </summary>
-        private void ClearThumbnails()
-        {
-            var toRemove = thumbnailPanel.Controls.OfType<PictureBox>().ToList();
-            foreach (var pb in toRemove)
-            {
-                try
-                {
-                    thumbnailPanel.Controls.Remove(pb);
-                    pb.Image?.Dispose();
-                    pb.Dispose();
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError($"Error disposing thumbnail control", ex);
-                }
-            }
 
-            _currentDirectory = null;
-        }
-
-        /// <summary>
         /// Shows the placeholder label indicating no content is loaded.
         /// </summary>
         private void ShowPlaceholder()
         {
             placeholderLabel.Visible = true;
             placeholderLabel.BringToFront();
+            placeholderLabel.AutoSize = false;
+            placeholderLabel.Dock = DockStyle.None;
+            placeholderLabel.Size = new Size(100, 23);
+            // Remove the Size assignment - Dock = DockStyle.Fill will handle sizing
         }
 
         /// <summary>
@@ -201,38 +201,64 @@ namespace PictureRenameApp
         /// </summary>
         private void Thumbnail_Click(object? sender, EventArgs e)
         {
-            if (sender is not PictureBox pb || pb.Tag is not string path || !File.Exists(path))
+            if (!ValidateThumbnailClickSender(sender, out var filePath))
                 return;
 
             try
             {
-                // Support Ctrl for multi-select
-                bool isCtrl = (ModifierKeys & Keys.Control) == Keys.Control;
-
-                if (isCtrl)
-                {
-                    // Toggle selection
-                    pb.BackColor = pb.BackColor == Color.LightBlue ? Color.White : Color.LightBlue;
-                }
-                else
-                {
-                    // Single select - deselect all others
-                    foreach (Control c in thumbnailPanel.Controls.OfType<PictureBox>())
-                    {
-                        c.BackColor = Color.White;
-                    }
-                    pb.BackColor = Color.LightBlue;
-                }
-
-                DisplayImagePreview(path);
-                DisplayFileMetadata(path);
-                _currentDirectory = Path.GetDirectoryName(path);
-
-                _logger.LogDebug($"Thumbnail selected: {Path.GetFileName(path)}");
+                SelectAndDisplayThumbnail(filePath);
             }
             catch (Exception ex)
             {
                 _logger.LogError("Error handling thumbnail click", ex);
+            }
+        }
+
+        /// <summary>
+        /// Validates the thumbnail click sender and extracts the file path.
+        /// </summary>
+        /// <param name="sender">The event sender (should be a PictureBox)</param>
+        /// <param name="filePath">The extracted file path if validation succeeds</param>
+        /// <returns>True if sender is valid and file exists; otherwise false</returns>
+        private bool ValidateThumbnailClickSender(object? sender, out string filePath)
+        {
+            filePath = string.Empty;
+
+            if (sender is not PictureBox pictureBox)
+                return false;
+
+            if (pictureBox.Tag is not string path)
+                return false;
+
+            if (!File.Exists(path))
+                return false;
+
+            filePath = path;
+            return true;
+        }
+
+        /// <summary>
+        /// Selects the thumbnail and displays the associated file.
+        /// </summary>
+        /// <param name="filePath">The path to the selected file</param>
+        private async void SelectAndDisplayThumbnail(string filePath)
+        {
+            // Update selection in model
+            bool isCtrlPressed = (ModifierKeys & Keys.Control) == Keys.Control;
+            _thumbnailSelector.SelectThumbnail(filePath, isCtrlPressed);
+
+            // Update current directory
+            string? directory = Path.GetDirectoryName(filePath);
+            if (!string.IsNullOrEmpty(directory))
+                _model.CurrentDirectory = directory;
+
+            // Refresh UI to reflect new selection state
+            RefreshThumbnailsUI();
+
+            // Display the selected file if it still exists
+            if (File.Exists(filePath))
+            {
+                await _controller.DisplayFileAsync(filePath);
             }
         }
 
@@ -244,68 +270,7 @@ namespace PictureRenameApp
             if (sender is not PictureBox pb || pb.Tag is not string path || !File.Exists(path))
                 return;
 
-            try
-            {
-                _logger.LogInfo($"Opening file with default viewer: {Path.GetFileName(path)}");
-                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(path) { UseShellExecute = true });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError($"Failed to open file with default viewer", ex);
-                MessageBox.Show("Could not open file with default viewer.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
-        }
-
-        /// <summary>
-        /// Displays the selected image in the preview panel.
-        /// </summary>
-        private void DisplayImagePreview(string filePath)
-        {
-            try
-            {
-                var image = _imageService.LoadImageFromFile(filePath);
-                previewPictureBox.Image?.Dispose();
-                previewPictureBox.Image = image;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError($"Failed to display image preview", ex);
-                previewPictureBox.Image = null;
-                metadataTextBox.Text = "Could not load image preview.";
-            }
-        }
-
-        /// <summary>
-        /// Displays file metadata including size, dates, and image properties.
-        /// </summary>
-        private void DisplayFileMetadata(string filePath)
-        {
-            try
-            {
-                var fileInfo = new FileInfo(filePath);
-                var metadata = new System.Text.StringBuilder();
-
-                metadata.AppendLine($"File: {fileInfo.Name}");
-                metadata.AppendLine($"Size: {_fileService.FormatFileSize(fileInfo.Length)}");
-                metadata.AppendLine($"Created: {fileInfo.CreationTime:yyyy-MM-dd HH:mm:ss}");
-                metadata.AppendLine($"Modified: {fileInfo.LastWriteTime:yyyy-MM-dd HH:mm:ss}");
-                metadata.AppendLine($"Path: {fileInfo.FullName}");
-
-                if (previewPictureBox.Image != null)
-                {
-                    metadata.AppendLine($"Dimensions: {previewPictureBox.Image.Width} x {previewPictureBox.Image.Height}");
-                    metadata.AppendLine($"Format: {_imageService.GetImageFormatString(previewPictureBox.Image)}");
-                }
-
-                metadataTextBox.Text = metadata.ToString();
-
-                _logger.LogDebug($"Metadata displayed for: {Path.GetFileName(filePath)}");
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError("Failed to display file metadata", ex);
-                metadataTextBox.Text = "Could not retrieve file metadata.";
-            }
+            _fileInteractionHandler.OpenFileWithDefaultViewer(path);
         }
 
         /// <summary>
@@ -335,67 +300,12 @@ namespace PictureRenameApp
             {
                 _logger.LogInfo($"Files/folders dropped ({dropItems.Length} items)");
 
-                // Prefer folders over files
                 var folder = dropItems.FirstOrDefault(d => Directory.Exists(d));
                 if (folder != null)
                 {
-                    LoadDirectoryThumbnails(folder);
+                    _ = _controller.LoadDirectoryAsync(folder);
                     return;
                 }
-
-                // If only files dropped, load their images
-                var supportedExtensions = _imageService.GetSupportedExtensions();
-                var imageFiles = dropItems
-                    .Where(f => File.Exists(f) && supportedExtensions.Contains(Path.GetExtension(f).ToLower()))
-                    .ToList();
-
-                if (imageFiles.Count == 0)
-                {
-                    _logger.LogWarning("No supported image files found in dropped items");
-                    return;
-                }
-
-                ClearThumbnails();
-                HidePlaceholder();
-
-                foreach (var file in imageFiles)
-                {
-                    try
-                    {
-                        var thumb = _imageService.CreateThumbnailImage(file, _thumbnailSize) 
-                            ?? new Bitmap(_thumbnailSize.Width, _thumbnailSize.Height);
-                        
-                        var pb = new PictureBox
-                        {
-                            Width = _thumbnailSize.Width + 8,
-                            Height = _thumbnailSize.Height + 8,
-                            SizeMode = PictureBoxSizeMode.CenterImage,
-                            Image = thumb,
-                            Tag = file,
-                            Padding = new Padding(4),
-                            Cursor = Cursors.Hand,
-                            BackColor = Color.White,
-                            BorderStyle = BorderStyle.FixedSingle
-                        };
-
-                        pb.Click += Thumbnail_Click;
-                        pb.DoubleClick += Thumbnail_DoubleClick;
-
-                        var tooltip = new ToolTip();
-                        tooltip.SetToolTip(pb, file);
-                        thumbnailPanel.Controls.Add(pb);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError($"Failed to create thumbnail for dropped file", ex);
-                    }
-                }
-
-                _currentDirectory = Path.GetDirectoryName(imageFiles[0]);
-                DisplayImagePreview(imageFiles[0]);
-                DisplayFileMetadata(imageFiles[0]);
-
-                _logger.LogInfo($"Successfully loaded {imageFiles.Count} dropped image(s)");
             }
             catch (Exception ex)
             {
@@ -411,55 +321,19 @@ namespace PictureRenameApp
         {
             try
             {
-                string? selectedFile = GetSelectedThumbnailFilePath();
-                string? dirToOpen = null;
+                string? dirToOpen = GetDirectoryToOpen();
 
-                // Determine directory to open based on current selection
-                if (!string.IsNullOrEmpty(selectedFile) && File.Exists(selectedFile))
-                {
-                    dirToOpen = Path.GetDirectoryName(selectedFile);
-                }
-                else if (!string.IsNullOrEmpty(_currentDirectory) && Directory.Exists(_currentDirectory))
-                {
-                    dirToOpen = _currentDirectory;
-                }
-
-                // If we have a directory, load it
                 if (!string.IsNullOrEmpty(dirToOpen) && Directory.Exists(dirToOpen))
                 {
-                    try
-                    {
-                        LoadDirectoryThumbnails(dirToOpen);
-                        _logger.LogInfo($"Loaded directory via Open Folder: {dirToOpen}");
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError("Failed to load directory", ex);
-                    }
-
-                    // Also open in Explorer
-                    try
-                    {
-                        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo()
-                        {
-                            FileName = dirToOpen,
-                            UseShellExecute = true,
-                            Verb = "open"
-                        });
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogDebug($"Could not open Explorer window: {ex.Message}");
-                    }
-
+                    _ = _controller.LoadDirectoryAsync(dirToOpen);
+                    _fileInteractionHandler.OpenFolderInExplorer(dirToOpen);
                     return;
                 }
 
-                // Fallback: show folder browser dialog
-                using var dlg = new FolderBrowserDialog { Description = "Select folder with images" };
-                if (dlg.ShowDialog(this) == DialogResult.OK)
+                string? selectedPath = _fileInteractionHandler.BrowseForFolder(this, "Select folder with images");
+                if (!string.IsNullOrEmpty(selectedPath))
                 {
-                    LoadDirectoryThumbnails(dlg.SelectedPath);
+                    _ = _controller.LoadDirectoryAsync(selectedPath);
                 }
             }
             catch (Exception ex)
@@ -470,35 +344,28 @@ namespace PictureRenameApp
         }
 
         /// <summary>
-        /// Gets the file path of the currently selected thumbnail.
+        /// Determines the directory to open based on current selection or last directory.
         /// </summary>
-        private string? GetSelectedThumbnailFilePath()
+        private string? GetDirectoryToOpen()
         {
-            var pb = thumbnailPanel.Controls.OfType<PictureBox>().FirstOrDefault(p => p.BackColor == Color.LightBlue);
-            return pb?.Tag as string;
-        }
+            string? selectedFile = _model.SelectedFilePath;
+            if (!string.IsNullOrEmpty(selectedFile) && File.Exists(selectedFile))
+                return Path.GetDirectoryName(selectedFile);
 
-        /// <summary>
-        /// Gets all selected thumbnail file paths (supports multi-select via Ctrl).
-        /// </summary>
-        private List<string> GetSelectedThumbnailFilePaths()
-        {
-            return thumbnailPanel.Controls
-                .OfType<PictureBox>()
-                .Where(pb => pb.BackColor == Color.LightBlue && pb.Tag is string && File.Exists(pb.Tag as string))
-                .Select(pb => pb.Tag as string ?? string.Empty)
-                .ToList();
+            if (!string.IsNullOrEmpty(_model.CurrentDirectory) && Directory.Exists(_model.CurrentDirectory))
+                return _model.CurrentDirectory;
+
+            return null;
         }
 
         /// <summary>
         /// Handles the Rename button click for single or batch rename operations.
-        /// Supports format: BaseName_001, BaseName_002, etc.
         /// </summary>
         private void RenameButton_Click(object sender, EventArgs e)
         {
             try
             {
-                var selected = GetSelectedThumbnailFilePaths();
+                var selected = _model.SelectedFilePaths;
 
                 if (selected.Count == 0)
                 {
@@ -513,11 +380,11 @@ namespace PictureRenameApp
 
                 if (selected.Count == 1)
                 {
-                    RenameSingleFile(selected[0]);
+                    HandleSingleRename(selected[0]);
                 }
                 else
                 {
-                    RenameBatchFiles(selected);
+                    HandleBatchRename(selected);
                 }
             }
             catch (Exception ex)
@@ -528,13 +395,13 @@ namespace PictureRenameApp
         }
 
         /// <summary>
-        /// Renames a single file with user-provided name.
+        /// Handles single file rename.
         /// </summary>
-        private void RenameSingleFile(string sourcePath)
+        private void HandleSingleRename(string sourcePath)
         {
             try
             {
-                var dir = Path.GetDirectoryName(sourcePath) ?? _currentDirectory;
+                var dir = Path.GetDirectoryName(sourcePath) ?? _model.CurrentDirectory;
                 var ext = Path.GetExtension(sourcePath);
                 var defaultName = Path.GetFileNameWithoutExtension(sourcePath);
 
@@ -545,47 +412,20 @@ namespace PictureRenameApp
                     return;
                 }
 
-                var dest = Path.Combine(dir ?? string.Empty, newName + ext);
-
-                if (string.Equals(sourcePath, dest, StringComparison.OrdinalIgnoreCase))
-                {
-                    _logger.LogInfo("Source and destination are the same, operation cancelled");
-                    return;
-                }
-
-                if (File.Exists(dest))
-                {
-                    var ans = MessageBox.Show(
-                        $"File {Path.GetFileName(dest)} already exists. Overwrite?",
-                        "File Exists",
-                        MessageBoxButtons.YesNo,
-                        MessageBoxIcon.Question);
-
-                    if (ans != DialogResult.Yes)
-                    {
-                        _logger.LogInfo("Overwrite declined by user");
-                        return;
-                    }
-                }
-
-                _fileService.RenameFile(sourcePath, dest, overwrite: true);
-                _logger.LogInfo($"File renamed successfully: {Path.GetFileName(sourcePath)} → {Path.GetFileName(dest)}");
-
-                // Refresh display
-                if (dir != null && Directory.Exists(dir))
-                    LoadDirectoryThumbnails(dir);
+                _ = _controller.RenameSingleFileAsync(sourcePath, newName);
+                MessageBox.Show("File renamed successfully", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
             catch (Exception ex)
             {
-                _logger.LogError("Error renaming single file", ex);
+                _logger.LogError("Error in single rename", ex);
                 MessageBox.Show($"Rename failed: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 
         /// <summary>
-        /// Renames multiple selected files with pattern: BaseName_###.ext
+        /// Handles batch file rename.
         /// </summary>
-        private void RenameBatchFiles(List<string> selectedFiles)
+        private void HandleBatchRename(List<string> selectedFiles)
         {
             try
             {
@@ -596,71 +436,12 @@ namespace PictureRenameApp
                     return;
                 }
 
-                string baseName = batchInfo.Value.BaseName;
-                int startIndex = batchInfo.Value.StartIndex;
-                var dirForReload = Path.GetDirectoryName(selectedFiles[0]) ?? _currentDirectory;
-
-                // Sort files for consistent ordering
-                var ordered = selectedFiles.OrderBy(s => s).ToList();
-
-                _logger.LogInfo($"Starting batch rename of {ordered.Count} files with base name '{baseName}'");
-
-                int successCount = 0;
-                for (int i = 0; i < ordered.Count; i++)
-                {
-                    var src = ordered[i];
-                    var ext = Path.GetExtension(src);
-                    int idx = startIndex + i;
-                    var destName = $"{baseName}_{idx:D3}{ext}"; // Format with leading zeros
-                    var dest = Path.Combine(Path.GetDirectoryName(src) ?? dirForReload ?? string.Empty, destName);
-
-                    try
-                    {
-                        if (File.Exists(dest))
-                        {
-                            var ans = MessageBox.Show(
-                                $"Target file {destName} already exists. Overwrite?\nSource: {Path.GetFileName(src)}",
-                                "File Exists",
-                                MessageBoxButtons.YesNoCancel,
-                                MessageBoxIcon.Question);
-
-                            if (ans == DialogResult.Cancel)
-                            {
-                                _logger.LogInfo("Batch rename cancelled by user");
-                                break;
-                            }
-
-                            if (ans == DialogResult.No)
-                            {
-                                _logger.LogInfo($"Skipped: {Path.GetFileName(src)}");
-                                continue;
-                            }
-                        }
-
-                        _fileService.RenameFile(src, dest, overwrite: true);
-                        successCount++;
-                        _logger.LogInfo($"Renamed: {Path.GetFileName(src)} → {destName}");
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError($"Failed to rename file: {Path.GetFileName(src)}", ex);
-                        MessageBox.Show(
-                            $"Failed to rename {Path.GetFileName(src)}: {ex.Message}",
-                            "Error",
-                            MessageBoxButtons.OK,
-                            MessageBoxIcon.Error);
-                    }
-                }
-
+                _ = _controller.RenameBatchFilesAsync(selectedFiles, batchInfo.Value.BaseName, batchInfo.Value.StartIndex);
                 MessageBox.Show(
-                    $"Batch rename completed.\nSuccessfully renamed: {successCount}/{ordered.Count} files",
+                    $"Batch rename completed.\nSuccessfully renamed: {selectedFiles.Count} files",
                     "Complete",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Information);
-
-                // Refresh display
-                if (dirForReload != null && Directory.Exists(dirForReload))
-                    LoadDirectoryThumbnails(dirForReload);
             }
             catch (Exception ex)
             {
@@ -685,13 +466,12 @@ namespace PictureRenameApp
         {
             try
             {
-                _logger.LogInfo("Clear All clicked");
-                ClearThumbnails();
+                _controller.ClearAll();
+                _thumbnailPanelManager.Clear();
                 previewPictureBox.Image?.Dispose();
                 previewPictureBox.Image = null;
                 metadataTextBox.Clear();
                 ShowPlaceholder();
-                _logger.LogInfo("UI cleared successfully");
             }
             catch (Exception ex)
             {
@@ -706,6 +486,58 @@ namespace PictureRenameApp
         {
             _logger.LogInfo("Settings clicked");
             MessageBox.Show("Settings will be available in a future version.", "Feature Coming Soon", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+
+        /// <summary>
+        /// Creates a thumbnail image for the specified file path and size.
+        /// </summary>
+        public Image? CreateThumbnailImage(string filePath, Size size)
+        {
+            if (string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath))
+            {
+                _logger.LogWarning($"Thumbnail creation skipped: file not found or invalid path: {filePath}");
+                return null;
+            }
+
+            try
+            {
+                _logger.LogDebug($"Creating thumbnail for: {filePath}");
+                // Use FileStream with sequential scan to reduce memory pressure
+                using var fs = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, FileOptions.SequentialScan);
+                using var src = Image.FromStream(fs, useEmbeddedColorManagement: false, validateImageData: false);
+
+                var bmp = new Bitmap(size.Width, size.Height);
+                using var g = Graphics.FromImage(bmp);
+
+                // Use faster rendering settings to reduce CPU usage
+                g.CompositingQuality = CompositingQuality.Default;
+                g.InterpolationMode = InterpolationMode.Low;
+                g.SmoothingMode = SmoothingMode.None;
+                g.Clear(Color.Transparent);
+
+                var ratio = Math.Min((double)size.Width / src.Width, (double)size.Height / src.Height);
+                var thumbW = Math.Max(1, (int)(src.Width * ratio));
+                var thumbH = Math.Max(1, (int)(src.Height * ratio));
+                var x = (size.Width - thumbW) / 2;
+                var y = (size.Height - thumbH) / 2;
+
+                g.DrawImage(src, x, y, thumbW, thumbH);
+
+                _logger.LogDebug($"Thumbnail created successfully: {Path.GetFileName(filePath)}");
+                return bmp;
+            }
+            catch (OutOfMemoryException ex)
+            {
+                // Avoid capturing full exception to reduce memory retention
+                _logger.LogError($"Out of memory creating thumbnail for {Path.GetFileName(filePath)}");
+                return null;
+            }
+            catch (Exception ex)
+            {
+                // Log concise message and swallow exception to keep UI responsive
+                _logger.LogError($"Failed to create thumbnail for {Path.GetFileName(filePath)}");
+                return null;
+            }
         }
     }
 }

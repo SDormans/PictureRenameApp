@@ -15,23 +15,48 @@ namespace PictureRenameApp
             {
                 ApplicationConfiguration.Initialize();
 
-                // Configure and build the service provider for dependency injection
-                var serviceProvider = ServiceConfiguration.ConfigureServices();
+                // Configure services first (without form context)
+                var serviceProvider = ServiceConfiguration.ConfigureServices(uiControl: null);
 
-                // Resolve the logger to log startup
+                // Resolve services
                 var logger = serviceProvider.GetRequiredService<Services.IApplicationLogger>();
+                var controller = serviceProvider.GetRequiredService<Controllers.IApplicationController>();
+                
                 logger.LogInfo("=== Application Starting ===");
 
-                // Resolve and run the main form with injected dependencies
-                var form = new Form1(
-                    serviceProvider.GetRequiredService<Services.IApplicationLogger>(),
-                    serviceProvider.GetRequiredService<Services.IImageService>(),
-                    serviceProvider.GetRequiredService<Services.IFileService>()
-                );
+                try
+                {
+                    // Create form with proper dependencies
+                    var form = new Form1(logger, controller);
+                    logger.LogDebug("Form1 created successfully");
 
-                Application.Run(form);
+                    Application.Run(form);
 
-                logger.LogInfo("=== Application Ended ===");
+                    logger.LogInfo("=== Application Ended ===");
+                }
+                catch (ArgumentException gdiEx) when (gdiEx.Message.Contains("Parameter"))
+                {
+                    // Specific handling for GDI+ "Parameter is not valid" exception
+                    logger.LogError("GDI+ error during form initialization or rendering. This may indicate corrupted image data or invalid image dimensions.", gdiEx);
+                    
+                    MessageBox.Show(
+                        $"A graphics error occurred during startup: {gdiEx.Message}\n\n" +
+                        $"This may be due to corrupted image files or invalid image data.\n" +
+                        $"Please check the logs in the Logs folder for details.",
+                        "Graphics Error",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Error);
+                }
+                catch (Exception formEx)
+                {
+                    logger.LogError("Error during form execution", formEx);
+                    
+                    MessageBox.Show(
+                        $"An error occurred during form execution: {formEx.Message}\n\nPlease check the logs in the Logs folder.",
+                        "Form Error",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Error);
+                }
             }
             catch (Exception ex)
             {
