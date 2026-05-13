@@ -1,8 +1,8 @@
 {
   "version": 2,
-  "dgSpecHash": "JI77RPVaW6Q=",
+  "dgSpecHash": "SwtqPb++PjU=",
   "success": true,
-  "projectFilePath": "C:\\Users\\stino\\source\\repos\\SDormans\\PictureRenameApp.Tests\\PictureRenameApp.Tests.csproj",
+  "projectFilePath": "c:\\Users\\stino\\source\\repos\\SDormans\\PictureRenameApp\\PictureRenameApp.Tests\\PictureRenameApp.Tests.csproj",
   "expectedPackageFiles": [
     "C:\\Users\\stino\\.nuget\\packages\\coverlet.collector\\6.0.0\\coverlet.collector.6.0.0.nupkg.sha512",
     "C:\\Users\\stino\\.nuget\\packages\\microsoft.codecoverage\\17.8.0\\microsoft.codecoverage.17.8.0.nupkg.sha512",

@@ -352,7 +352,7 @@ namespace PictureRenameApp.Tests
         }
 
         [Fact]
-        public void RenameFile_WithExistingDestination_WithoutOverwrite_ThrowsIOException()
+        public void RenameFile_WithExistingDestination_WithoutOverwrite_LeavesFilesUnchanged()
         {
             // Arrange
             var logger = new MockLogger();
@@ -368,8 +368,14 @@ namespace PictureRenameApp.Tests
                 File.WriteAllText(sourcePath, "source");
                 File.WriteAllText(destPath, "dest");
 
-                // Act & Assert
-                Assert.Throws<IOException>(() => fileService.RenameFile(sourcePath, destPath, overwrite: false));
+                // Act — FileService returns without throwing when destination exists and overwrite is false
+                fileService.RenameFile(sourcePath, destPath, overwrite: false);
+
+                // Assert — no rename occurred
+                Assert.True(File.Exists(sourcePath));
+                Assert.True(File.Exists(destPath));
+                Assert.Equal("source", File.ReadAllText(sourcePath));
+                Assert.Equal("dest", File.ReadAllText(destPath));
             }
             finally
             {

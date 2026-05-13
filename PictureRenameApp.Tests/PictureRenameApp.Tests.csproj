@@ -17,7 +17,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\PictureRenameApp\PictureRenameApp.csproj" />
+    <ProjectReference Include="..\PictureRenameApp.csproj" />
   </ItemGroup>
 
 </Project>

@@ -6346,8 +6346,8 @@
     },
     "PictureRenameApp/1.0.0": {
       "type": "project",
-      "path": "../PictureRenameApp/PictureRenameApp.csproj",
-      "msbuildProject": "../PictureRenameApp/PictureRenameApp.csproj"
+      "path": "../PictureRenameApp.csproj",
+      "msbuildProject": "../PictureRenameApp.csproj"
     }
   },
   "projectFileDependencyGroups": {
@@ -6366,11 +6366,11 @@
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "C:\\Users\\stino\\source\\repos\\SDormans\\PictureRenameApp.Tests\\PictureRenameApp.Tests.csproj",
+      "projectUniqueName": "c:\\Users\\stino\\source\\repos\\SDormans\\PictureRenameApp\\PictureRenameApp.Tests\\PictureRenameApp.Tests.csproj",
       "projectName": "PictureRenameApp.Tests",
-      "projectPath": "C:\\Users\\stino\\source\\repos\\SDormans\\PictureRenameApp.Tests\\PictureRenameApp.Tests.csproj",
+      "projectPath": "c:\\Users\\stino\\source\\repos\\SDormans\\PictureRenameApp\\PictureRenameApp.Tests\\PictureRenameApp.Tests.csproj",
       "packagesPath": "C:\\Users\\stino\\.nuget\\packages\\",
-      "outputPath": "C:\\Users\\stino\\source\\repos\\SDormans\\PictureRenameApp.Tests\\obj\\",
+      "outputPath": "c:\\Users\\stino\\source\\repos\\SDormans\\PictureRenameApp\\PictureRenameApp.Tests\\obj\\",
       "projectStyle": "PackageReference",
       "fallbackFolders": [
         "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
@@ -6391,8 +6391,8 @@
         "net8.0-windows7.0": {
           "targetAlias": "net8.0-windows",
           "projectReferences": {
-            "C:\\Users\\stino\\source\\repos\\SDormans\\PictureRenameApp\\PictureRenameApp.csproj": {
-              "projectPath": "C:\\Users\\stino\\source\\repos\\SDormans\\PictureRenameApp\\PictureRenameApp.csproj"
+            "c:\\Users\\stino\\source\\repos\\SDormans\\PictureRenameApp\\PictureRenameApp.csproj": {
+              "projectPath": "c:\\Users\\stino\\source\\repos\\SDormans\\PictureRenameApp\\PictureRenameApp.csproj"
             }
           }
         }
@@ -6407,7 +6407,7 @@
         "auditLevel": "low",
         "auditMode": "direct"
       },
-      "SdkAnalysisLevel": "9.0.300"
+      "SdkAnalysisLevel": "10.0.200"
     },
     "frameworks": {
       "net8.0-windows7.0": {
@@ -6446,7 +6446,7 @@
             "privateAssets": "all"
           }
         },
-        "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\9.0.312/PortableRuntimeIdentifierGraph.json"
+        "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\10.0.201/PortableRuntimeIdentifierGraph.json"
       }
     }
   }

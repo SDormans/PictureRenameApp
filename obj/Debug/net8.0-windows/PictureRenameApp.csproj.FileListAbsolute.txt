@@ -1,5 +1,4 @@
 C:\Users\stino\source\repos\SDormans\PictureRenameApp\obj\Debug\net8.0-windows\PictureRenameApp.csproj.AssemblyReference.cache
-C:\Users\stino\source\repos\SDormans\PictureRenameApp\obj\Debug\net8.0-windows\PictureRenameApp.Form1.resources
 C:\Users\stino\source\repos\SDormans\PictureRenameApp\obj\Debug\net8.0-windows\PictureRenameApp.Properties.Resources.resources
 C:\Users\stino\source\repos\SDormans\PictureRenameApp\obj\Debug\net8.0-windows\PictureRenameApp.csproj.GenerateResource.cache
 C:\Users\stino\source\repos\SDormans\PictureRenameApp\obj\Debug\net8.0-windows\PictureRenameApp.GeneratedMSBuildEditorConfig.editorconfig

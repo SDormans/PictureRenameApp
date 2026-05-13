@@ -18,17 +18,16 @@ namespace PictureRenameApp
                 // Configure services first (without form context)
                 var serviceProvider = ServiceConfiguration.ConfigureServices(uiControl: null);
 
-                // Resolve services
                 var logger = serviceProvider.GetRequiredService<Services.IApplicationLogger>();
-                var controller = serviceProvider.GetRequiredService<Controllers.IApplicationController>();
+                _ = serviceProvider.GetRequiredService<Controllers.IApplicationController>();
                 
                 logger.LogInfo("=== Application Starting ===");
 
                 try
                 {
-                    // Create form with proper dependencies
-                    var form = new Form1(logger, controller);
-                    logger.LogDebug("Form1 created successfully");
+                    // Main UI (carousel-style shell); services remain registered for future wiring.
+                    var form = new MainForm();
+                    logger.LogDebug("MainForm created successfully");
 
                     Application.Run(form);
 

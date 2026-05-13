@@ -24,7 +24,7 @@ namespace PictureRenameApp
         /// <summary>
         /// Configures and registers all application services with optional UI control for thread synchronization.
         /// </summary>
-        /// <param name="uiControl">Optional UI control for thread synchronization (e.g., Form1)</param>
+        /// <param name="uiControl">Optional UI control for thread synchronization (e.g., main form)</param>
         /// <returns>Configured IServiceProvider ready for dependency injection</returns>
         public static IServiceProvider ConfigureServices(Control? uiControl = null)
         {
