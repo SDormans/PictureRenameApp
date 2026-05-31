@@ -35,13 +35,13 @@ Place GUI screenshots in the `screenshots/` directory. The README references the
 
 Example markdown to show screenshots (these images are not included by default):
 
-![Main window](screenshots/main.svg)
+![Main window](screenshots/main.pg)
 
-![Open folder](screenshots/open-folder.svg)
+![Open folder](screenshots/open-folder.png)
 
-![Batch rename dialog](screenshots/batch-rename.svg)
+![Batch rename dialog](screenshots/batch-rename.png)
 
-![Remove or Delete prompt](screenshots/confirm-remove.svg)
+![Remove or Delete prompt](screenshots/confirm-remove.png)
 
 Mock screenshots are included in the `screenshots/` folder as SVG placeholders. To replace them with real captures:
 
