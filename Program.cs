@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using PictureRenameApp.Configuration;
 
 namespace PictureRenameApp
 {
@@ -39,43 +40,28 @@ namespace PictureRenameApp
                     logger.LogError("GDI+ error during form initialization or rendering. This may indicate corrupted image data or invalid image dimensions.", gdiEx);
                     
                     MessageBox.Show(
-                        $"A graphics error occurred during startup: {gdiEx.Message}\n\n" +
-                        $"This may be due to corrupted image files or invalid image data.\n" +
-                        $"Please check the logs in the Logs folder for details.",
-                        "Graphics Error",
+                        string.Format(AppConstants.GraphicsErrorMessage, gdiEx.Message),
+                        AppConstants.GraphicsErrorTitle,
                         MessageBoxButtons.OK,
                         MessageBoxIcon.Error);
                 }
                 catch (Exception formEx)
                 {
-                    logger.LogError("Error during form execution", formEx);
-                    
+                    logger.LogError("Critical error during application startup", formEx);
                     MessageBox.Show(
-                        $"An error occurred during form execution: {formEx.Message}\n\nPlease check the logs in the Logs folder.",
-                        "Form Error",
+                        $"An unexpected error occurred during startup:\n{formEx.Message}",
+                        AppConstants.ErrorTitle,
                         MessageBoxButtons.OK,
                         MessageBoxIcon.Error);
                 }
             }
             catch (Exception ex)
             {
-                // Fallback error handling if DI setup fails
                 MessageBox.Show(
-                    $"Failed to start application: {ex.Message}\n\nPlease check the logs in the Logs folder.",
-                    "Startup Error",
+                    $"Failed to initialize application:\n{ex.Message}",
+                    AppConstants.ErrorTitle,
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Error);
-
-                // Try to log the error if logger is available
-                try
-                {
-                    var logger = ServiceConfiguration.ConfigureServices().GetRequiredService<Services.IApplicationLogger>();
-                    logger.LogError("Application startup failed", ex);
-                }
-                catch
-                {
-                    // Silently fail if we can't even log
-                }
             }
         }
     }

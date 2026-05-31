@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("PictureRenameApp.Tests")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+a347644a641799383cb4566b390ca02f5646df10")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+62b06789d99bb81b7456da9d431b473becb806ec")]
 [assembly: System.Reflection.AssemblyProductAttribute("PictureRenameApp.Tests")]
 [assembly: System.Reflection.AssemblyTitleAttribute("PictureRenameApp.Tests")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

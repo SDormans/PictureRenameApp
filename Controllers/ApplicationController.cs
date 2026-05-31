@@ -6,6 +6,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using System.Collections.ObjectModel;
+using PictureRenameApp.Configuration;
 using PictureRenameApp.Models;
 using PictureRenameApp.Services;
 
@@ -14,6 +15,7 @@ namespace PictureRenameApp.Controllers
     /// <summary>
     /// Implementation of the application controller for business logic orchestration.
     /// Handles all business logic operations with thread-safe model updates.
+    /// Uses constants for configuration and efficient thumbnail loading.
     /// </summary>
     public class ApplicationController : IApplicationController
     {
@@ -22,7 +24,7 @@ namespace PictureRenameApp.Controllers
         private readonly IFileService _fileService;
         private readonly IApplicationModel _model;
         private readonly Control? _uiSynchronizationContext;
-        private readonly Size _thumbnailSize = new Size(128, 128);
+        private readonly Size _thumbnailSize = new Size(AppConstants.ThumbnailWidth, AppConstants.ThumbnailHeight);
 
         /// <summary>
         /// Initializes a new instance of the <see cref="ApplicationController"/> class.
@@ -74,7 +76,7 @@ namespace PictureRenameApp.Controllers
                     _logger.LogInfo("No images found in directory");
                     MarshalToUIThread(() =>
                     {
-                        _model.MetadataText = "No images in this directory.";
+                        _model.MetadataText = AppConstants.NoImagesMessage;
                         _model.PreviewImage?.Dispose();
                         _model.PreviewImage = null;
                     });
@@ -105,8 +107,7 @@ namespace PictureRenameApp.Controllers
         }
 
         /// <inheritdoc/>
-        public async Task DisplayFileAsync(string filePath
-            )
+        public async Task DisplayFileAsync(string filePath)
         {
             try
             {
@@ -195,6 +196,31 @@ namespace PictureRenameApp.Controllers
                     return;
                 }
 
+                // Determine target root folder: prefer model current directory, fallback to first file directory
+                string targetRoot = _model.CurrentDirectory ?? string.Empty;
+                if (string.IsNullOrWhiteSpace(targetRoot) || !Directory.Exists(targetRoot))
+                {
+                    targetRoot = Path.GetDirectoryName(selectedFiles[0]) ?? string.Empty;
+                }
+
+                if (string.IsNullOrWhiteSpace(targetRoot) || !Directory.Exists(targetRoot))
+                {
+                    _logger.LogWarning("Unable to determine target directory for batch rename");
+                    return;
+                }
+
+                // Create destination subfolder named after the baseName
+                var destinationFolder = Path.Combine(targetRoot, baseName);
+                try
+                {
+                    Directory.CreateDirectory(destinationFolder);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError($"Failed to create destination folder for batch rename: {destinationFolder}", ex);
+                    return;
+                }
+
                 int index = startIndex;
                 foreach (var filePath in selectedFiles)
                 {
@@ -204,18 +230,18 @@ namespace PictureRenameApp.Controllers
                         continue;
                     }
 
-                    var directory = Path.GetDirectoryName(filePath) ?? string.Empty;
                     var extension = Path.GetExtension(filePath);
                     var newNamePart = $"{baseName}_{index:D3}";
-                    var destinationPath = Path.Combine(directory, $"{newNamePart}{extension}");
-                    
+                    var destinationPath = Path.Combine(destinationFolder, $"{newNamePart}{extension}");
+
+                    // Move/rename file into the destination folder
                     await Task.Run(() => _fileService.RenameFile(filePath, destinationPath, overwrite: false));
-                    _logger.LogDebug($"Batch renamed: {Path.GetFileName(filePath)} -> {newNamePart}");
-                    
+                    _logger.LogDebug($"Batch renamed and moved: {Path.GetFileName(filePath)} -> {Path.GetFileName(destinationPath)} (folder: {destinationFolder})");
+
                     index++;
                 }
 
-                _logger.LogInfo($"Batch rename completed for {selectedFiles.Count} files");
+                _logger.LogInfo($"Batch rename completed for {selectedFiles.Count} files into folder: {destinationFolder}");
             }
             catch (Exception ex)
             {
@@ -260,14 +286,14 @@ namespace PictureRenameApp.Controllers
         }
 
         /// <summary>
-        /// Loads thumbnails from a list of file paths asynchronously.
+        /// Loads thumbnails from a list of file paths asynchronously with controlled concurrency.
         /// Ensures model updates are thread-safe by marshaling to UI thread.
         /// Validates thumbnails before adding to model.
         /// </summary>
         private async Task LoadThumbnailsAsync(List<string> files)
         {
-            // Limit concurrency to avoid overwhelming the system (e.g., 4 at a time)
-            int maxDegreeOfParallelism = Math.Min(Environment.ProcessorCount, 4);
+            // Limit concurrency to avoid overwhelming the system
+            int maxDegreeOfParallelism = Math.Min(Environment.ProcessorCount, AppConstants.MaxConcurrentFileOperations);
             using var semaphore = new System.Threading.SemaphoreSlim(maxDegreeOfParallelism);
             var thumbnailTasks = new List<Task<(string file, Image? thumb)>>();
 
@@ -300,13 +326,6 @@ namespace PictureRenameApp.Controllers
                         continue;
                     }
 
-                    if (thumb.Width <= 0 || thumb.Height <= 0)
-                    {
-                        _logger.LogWarning($"Thumbnail has invalid dimensions: {thumb.Width}x{thumb.Height} for {Path.GetFileName(file)}");
-                        thumb.Dispose();
-                        continue;
-                    }
-
                     var thumbnail = new ThumbnailItem
                     {
                         FilePath = file,
@@ -314,24 +333,18 @@ namespace PictureRenameApp.Controllers
                         IsSelected = false
                     };
 
-                    MarshalToUIThread(() =>
-                    {
-                        _model.Thumbnails.Add(thumbnail);
-                    });
-                }
-                catch (ArgumentException ex)
-                {
-                    _logger.LogError($"GDI+ error creating thumbnail for {Path.GetFileName(file)}: {ex.Message}");
+                    // Add to model on UI thread to ensure thread safety
+                    MarshalToUIThread(() => _model.Thumbnails.Add(thumbnail));
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError($"Failed to create thumbnail for {Path.GetFileName(file)}", ex);
+                    _logger.LogError($"Error adding thumbnail for {Path.GetFileName(file)}", ex);
                 }
             }
         }
 
         /// <summary>
-        /// Clears all model state.
+        /// Clears all model state and releases resources.
         /// </summary>
         private void ClearModelState()
         {

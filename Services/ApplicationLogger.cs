@@ -1,10 +1,14 @@
+using System;
 using System.Diagnostics;
+using System.IO;
+using PictureRenameApp.Configuration;
 
 namespace PictureRenameApp.Services
 {
     /// <summary>
     /// Concrete implementation of IApplicationLogger.
     /// Provides logging functionality with thread-safe operations and error handling.
+    /// Uses constants for configuration values to ensure consistency.
     /// </summary>
     public class ApplicationLogger : IApplicationLogger
     {
@@ -18,14 +22,14 @@ namespace PictureRenameApp.Services
         public ApplicationLogger()
         {
             var appDir = AppDomain.CurrentDomain.BaseDirectory;
-            var logDir = Path.Combine(appDir, "Logs");
+            var logDir = Path.Combine(appDir, AppConstants.LogsDirectory);
 
             try
             {
                 if (!Directory.Exists(logDir))
                     Directory.CreateDirectory(logDir);
 
-                _logFilePath = Path.Combine(logDir, $"app_{DateTime.Now:yyyy-MM-dd}.log");
+                _logFilePath = Path.Combine(logDir, string.Format(AppConstants.LogFileFormat, DateTime.Now));
             }
             catch (Exception ex)
             {

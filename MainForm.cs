@@ -490,6 +490,26 @@ public partial class MainForm : Form
     {
         var indices = EffectiveSelection();
         if (indices.Count == 0) return;
+
+        // Ask user whether to remove from list or delete from disk
+        var prompt = indices.Count == 1
+            ? $"Remove '{_files[indices[0]].Name}' from the list (Yes), or permanently delete it from disk (No)?"
+            : $"Remove {indices.Count} files from the list (Yes), or permanently delete them from disk (No)?";
+
+        var result = MessageBox.Show(this, prompt, "Remove / Delete",
+            MessageBoxButtons.YesNoCancel, MessageBoxIcon.Question);
+
+        if (result == DialogResult.Cancel)
+            return;
+
+        if (result == DialogResult.No)
+        {
+            // User chose to delete from disk - delegate to Delete_Click logic
+            Delete_Click();
+            return;
+        }
+
+        // Default: remove from list only
         foreach (var idx in indices.OrderByDescending(i => i))
         {
             _hashCache.Remove(_files[idx].FullName);

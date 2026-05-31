@@ -5,22 +5,24 @@ using System;
 using System.IO;
 using System.Drawing;
 using System.Linq;
+using PictureRenameApp.Configuration;
 
 namespace PictureRenameApp.Services
 {
     /// <summary>
     /// Concrete implementation of IImageService.
     /// Handles image operations including thumbnail generation and format detection.
+    /// Optimized for performance with lower quality settings for thumbnails
+    /// and efficient resource management.
     /// </summary>
     public class ImageService : IImageService
     {
         private readonly IApplicationLogger _logger;
         // Use HashSet for O(1) lookups
         private static readonly HashSet<string> SupportedImageExtensions = new(
-            new[] { ".jpg", ".jpeg", ".png", ".bmp", ".gif", ".webp", ".tiff" },
+            AppConstants.SupportedImageExtensions,
             StringComparer.OrdinalIgnoreCase
         );
-        private const int MaxThumbnailAttempts = 3;
 
         /// <summary>
         /// Initializes a new instance of ImageService.
@@ -50,13 +52,16 @@ namespace PictureRenameApp.Services
             {
                 _logger.LogDebug($"Creating thumbnail for: {filePath}");
                 // Open stream with sequential scan to reduce memory pressure and IO overhead
-                using var fs = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, FileOptions.SequentialScan);
+                using var fs = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read, 
+                    AppConstants.DefaultFileBufferSize, FileOptions.SequentialScan);
                 using var src = Image.FromStream(fs, useEmbeddedColorManagement: false, validateImageData: false);
 
-                // Create target bitmap and draw using faster rendering settings to reduce CPU usage
+                // Create target bitmap and draw using lower quality settings optimized for thumbnails
                 var bmp = new Bitmap(size.Width, size.Height);
                 using var g = Graphics.FromImage(bmp);
 
+                // Use lower quality for faster thumbnail generation
+                // Thumbnails don't need high quality rendering
                 g.CompositingQuality = CompositingQuality.Default;
                 g.InterpolationMode = InterpolationMode.Low;
                 g.SmoothingMode = SmoothingMode.None;
@@ -83,20 +88,17 @@ namespace PictureRenameApp.Services
             }
             catch (OutOfMemoryException ex)
             {
-                // Avoid capturing exception details to reduce memory retained by logs
-                _logger.LogError($"Out of memory creating thumbnail for {Path.GetFileName(filePath)}");
+                _logger.LogError($"Out of memory creating thumbnail for {Path.GetFileName(filePath)}", ex);
                 return null;
             }
             catch (ArgumentException ex)
             {
-                // Log GDI+ argument errors with more detail
-                _logger.LogError($"{ex.Source}: {ex.Message} creating thumbnail for {Path.GetFileName(filePath)}");
+                _logger.LogError($"{ex.Source}: {ex.Message} creating thumbnail for {Path.GetFileName(filePath)}", ex);
                 return null;
             }
             catch (Exception ex)
             {
-                // Log concise error message and swallow exception to keep caller stable
-                _logger.LogError($"Failed to create thumbnail for {Path.GetFileName(filePath)}: {ex.Message}");
+                _logger.LogError($"Failed to create thumbnail for {Path.GetFileName(filePath)}: {ex.Message}", ex);
                 return null;
             }
         }
@@ -112,7 +114,8 @@ namespace PictureRenameApp.Services
             try
             {
                 _logger.LogDebug($"Loading image from file: {filePath}");
-                using var fs = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, FileOptions.SequentialScan);
+                using var fs = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read, 
+                    AppConstants.DefaultFileBufferSize, FileOptions.SequentialScan);
                 using var image = Image.FromStream(fs, useEmbeddedColorManagement: false, validateImageData: false);
 
                 // Create a bitmap copy to detach from the stream
@@ -131,13 +134,12 @@ namespace PictureRenameApp.Services
             }
             catch (ArgumentException ex)
             {
-                // Log GDI+ argument errors with more detail
-                _logger.LogError($"{ex.Source}: {ex.Message} loading image from {Path.GetFileName(filePath)}");
+                _logger.LogError($"{ex.Source}: {ex.Message} loading image from {Path.GetFileName(filePath)}", ex);
                 return null;
             }
             catch (Exception ex)
             {
-                _logger.LogError($"Failed to load image from {Path.GetFileName(filePath)}: {ex.Message}");
+                _logger.LogError($"Failed to load image from {Path.GetFileName(filePath)}: {ex.Message}", ex);
                 return null;
             }
         }

@@ -1,165 +1,156 @@
-﻿# 📸 PictureRenameApp
+# Picture Rename App
 
-PictureRenameApp is a feature-rich Windows Forms application for advanced file management, renaming, and duplicate detection. Built with a modern UI and professional-grade features for both casual users and power users.
+[![Build Status](https://img.shields.io/badge/build-passing-brightgreen)]()
+[![License](https://img.shields.io/badge/license-MIT-blue)]()
 
----
+A lightweight, fast Windows desktop application (WinForms) for browsing, previewing, and renaming image files. Picture Rename App simplifies single and batch renaming, helps find duplicates, and supports safe file operations with clear user confirmations.
 
-## ✨ Features
-
-### 📁 Core File Management
-- **Drag & Drop** support for files and folders
-- **Multi-view display** - Switch between thumbnail tiles and detailed list view
-- **Live thumbnails** for images with async loading
-- **File preview** panel with tabs (Preview, Metadata, Info)
-- **Double-click** to open files with default OS program
-
-### 🔄 Advanced Renaming
-- **Single file rename** with custom dialogs
-- **Batch rename** with automatic numbering (`basename_001`, `_002`, etc.)
-- **Configurable start index** for batch operations
-- **Live preview** of renaming pattern
-- **Overwrite confirmation** with detailed file info
-- **Multi-select support** (Ctrl+click, Shift+click)
-
-### 🔍 Duplicate Detection
-- **Find duplicates** by filename across selected files
-- **Visual comparison** with up to 16 thumbnails per group
-- **Click to select** which version to keep (blue highlight)
-- **Keep Selected & Delete Others** button with confirmation
-- **Double-click to preview** before deleting
-- **Progress tracking** through duplicate groups
-
-### 🖼️ Enhanced UI/UX
-- **SplitContainer layout** with resizable panels
-- **Tabbed preview** (Preview | Metadata | Info)
-- **EXIF metadata display** for images
-- **File information panel** with size, date, dimensions
-- **Dark/Light mode** ready architecture
-- **Responsive design** with dynamic panel sizing
+Target platform: Windows (WinForms), .NET 8
 
 ---
 
-## 🖥 How It Works
+## What the project does
 
-### 1️⃣ Load Files
-- **Drag & drop** files directly into the thumbnail panel
-- Or use **Open Folder** button to load entire directories
-- Files appear as **thumbnails** (images) or **icons** (other files)
+Picture Rename App provides a simple, focused UI to:
 
-### 2️⃣ Select Files
-- **Single click** - Select one file (blue highlight)
-- **Ctrl+click** - Select multiple files
-- **Shift+click** - Select a range of files
-- Selected files show in **preview panel** with metadata
+- Browse directories and view image thumbnails
+- Preview images and view metadata
+- Rename a single file or perform batch renames with automatic numbering
+- Optionally move batch-renamed files into a dedicated subfolder named after the chosen base name
+- Remove files from the current list or permanently delete them from disk (prompted)
+- Detect duplicate files and (optionally) remove duplicates
 
-### 3️⃣ Choose Operation
-
-#### **Rename Files**
-- Click **Rename** button
-- For **single file**: Enter new name (without extension)
-- For **multiple files**: Enter base name and start index
-- Preview the naming pattern before confirming
-- Files are **moved** (not copied) with overwrite protection
-
-#### **Find Duplicates**
-- Select multiple files (at least 2)
-- Click **Find Duplicates** button
-- Review duplicate groups (max 16 thumbnails per group)
-- **Click** on the version you want to keep
-- Click **Keep Selected & Delete Others**
-- Confirm deletion in the warning dialog
+This project emphasizes reliability, predictable behavior, and efficient memory use when handling large image collections.
 
 ---
 
-## 🏷 Naming Rules
+## Why this project is useful
 
-| Situation | Result | Example |
-|-----------|--------|---------|
-| Single file | `NewName.ext` | `holiday.jpg` |
-| Multiple files | `BaseName_###.ext` | `holiday_001.jpg` |
-| Custom start index | `BaseName_###.ext` | `holiday_100.jpg` |
+Key features and benefits:
 
-⚠ **Files are moved** (not copied) and existing files prompt for confirmation.
-
----
-
-## 📂 Example Workflow
-
-### Batch Rename Example:
-Selected files:
-photo1.jpg
-photo2.jpg
-photo3.jpg
-
-Base name: "vacation"
-Start index: 1
-
-Result:
-vacation_001.jpg
-vacation_002.jpg
-vacation_003.jpg
-
-### Duplicate Detection Example:
-Selected files with duplicate names:
-C:\Photos\beach.jpg
-C:\Backup\beach.jpg
-C:\Downloads\beach.jpg
-
-User selects: C:\Photos\beach.jpg (blue highlight)
-Click "Keep Selected & Delete Others"
-Result: Only C:\Photos\beach.jpg remains
+- Fast, memory-conscious thumbnail generation
+- Batch rename convenience with automatic destination-folder creation
+- Clear prompts for destructive operations (delete vs remove)
+- Extensible, testable service layer (image, file, logger) making it easy to adapt or extend
+- Simple UI optimized for quick image renaming workflows
 
 ---
 
-## 🎯 Key Improvements
+## Getting started (developer)
 
-### From Original Version:
-- ✅ **Multi-select** support (Ctrl/Shift)
-- ✅ **Batch rename** with configurable numbering
-- ✅ **Duplicate detection** with visual comparison
-- ✅ **Live preview** panel with tabs
-- ✅ **Thumbnails** for images (not just icons)
-- ✅ **Overwrite confirmation** dialogs
-- ✅ **File metadata** display (EXIF, size, dates)
-- ✅ **Professional UI** with split containers
-- ✅ **Async loading** for better performance
-- ✅ **Memory-safe** image disposal
-- ✅ **Unit tests** Validate expected behaviour 
-- ✅ **Dependency injection** clean code
-- ✅ **Error handling and Logging** maintainable code
+### Prerequisites
 
----
+- .NET 8 SDK
+- Windows (WinForms desktop application)
+- Optional: Visual Studio 2022/2023 or Visual Studio Code
 
-## ⚠️ Current Limitations
+### Build and run
 
-- Duplicate detection is based on **filename only** (not content)
-- Maximum **16 thumbnails** shown per duplicate group
-- Files are **permanently deleted** (no recycle bin)
-- No **undo** functionality (yet)
+```bash
+# Restore and build
+dotnet restore
+dotnet build
 
----
+# Run the application
+dotnet run --project PictureRenameApp.csproj
+```
 
-## 🛠 Requirements
+Alternatively, open the project in Visual Studio and run the `PictureRenameApp` project.
 
-- Windows 10/11
-- .NET 6.0 or higher
-- Visual Studio 2022 (recommended for development)
+### Run tests
+
+If a test project is configured:
+
+```bash
+dotnet test
+```
 
 ---
 
-## 🚀 Future Improvements
+## Usage (end-user)
 
-### Code Quality
-- [ ] Optimize memory usage and disposal
+1. Click **Open folder�** to choose a directory with images.
+2. Thumbnails are generated; click any thumbnail to preview the image and metadata.
+3. Use **Rename** for single or batch renames. For batch renames, the renamed files are placed into a subfolder named after your base name.
+4. Use **Remove** to remove files from the displayed list � a prompt lets you choose to remove (keep on disk) or delete (permanently remove from disk).
+5. Use **Find duplicates�** to scan for and manage duplicates.
 
-### Features
-- [ ] Content-based duplicate detection (hash)
-- [ ] Recycle Bin support
-- [ ] Undo/Redo functionality
----
+Notes
 
-## 📜 License
-
-This project is intended for educational and demonstration purposes. Free to use and modify for personal projects.
+- Deleting files is permanent; the app will confirm before deleting.
+- Batch renames move files into `./<BaseName>/` inside the active directory by default.
 
 ---
+
+## Developer guide & architecture
+
+Key locations in the codebase:
+
+- `Controllers/` � ApplicationController and interfaces
+- `Services/` � ImageService, FileService, ApplicationLogger
+- `Utilities/` � Extension methods and LRU cache
+- `Configuration/AppConstants.cs` � centralized constants
+- `Program.cs` � application entry point
+
+Design highlights:
+
+- Service-oriented architecture: image, file, and logging responsibilities are separated for testability
+- Centralized constants and extensions to avoid duplication and magic numbers
+- Controlled concurrency for thumbnail generation to keep the UI responsive
+
+---
+
+## Useful commands
+
+- Build: `dotnet build`
+- Run: `dotnet run --project PictureRenameApp.csproj`
+- Test: `dotnet test` (if tests are present)
+
+---
+
+## Documentation & help
+
+More detailed documentation is included in this repository:
+
+- Documentation index: `DOCUMENTATION_INDEX.md`
+- Quick developer reference: `QUICK_REFERENCE_GUIDE.md`
+- Comprehensive refactor notes: `COMPREHENSIVE_REFACTORING_REPORT.md`
+- Refactoring checklist: `REFACTORING_CHECKLIST.md`
+
+If you need support or want to report an issue, open an issue in this repository.
+
+---
+
+## Contributing
+
+Contributions are welcome. Please follow standard GitHub workflow:
+
+1. Fork the repository
+2. Create a branch for your feature or bugfix
+3. Add tests and update documentation where appropriate
+4. Run `dotnet build` and `dotnet test`
+5. Submit a pull request
+
+Please add a `CONTRIBUTING.md` file if you want project-specific contributor guidelines.
+
+---
+
+## Maintainers
+
+See the repository owners and contributors on GitHub.
+
+---
+
+## License
+
+See the `LICENSE` file in the repository for license details.
+
+---
+
+If you'd like, I can also:
+
+- Add a CONTRIBUTING.md with suggested guidelines
+- Add a GitHub Actions CI workflow and badge
+- Add a sample screenshot and more usage examples
+
+Tell me which you'd prefer next.

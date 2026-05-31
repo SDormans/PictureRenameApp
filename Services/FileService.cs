@@ -1,8 +1,16 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using PictureRenameApp.Configuration;
+using PictureRenameApp.Utilities;
+
 namespace PictureRenameApp.Services
 {
     /// <summary>
     /// Concrete implementation of IFileService.
     /// Handles file system operations with comprehensive error handling and logging.
+    /// Optimized for efficient file scanning and resource management.
     /// </summary>
     public class FileService : IFileService
     {
@@ -22,15 +30,12 @@ namespace PictureRenameApp.Services
 
         public List<string> GetImageFilesInDirectory(string directoryPath)
         {
-            if (string.IsNullOrWhiteSpace(directoryPath))
+            if (!directoryPath.SafeDirectoryExists())
             {
-                _logger.LogWarning("GetImageFilesInDirectory called with empty path");
-                return new List<string>();
-            }
-
-            if (!Directory.Exists(directoryPath))
-            {
-                _logger.LogWarning($"Directory does not exist: {directoryPath}");
+                if (!string.IsNullOrWhiteSpace(directoryPath))
+                {
+                    _logger.LogWarning($"Directory does not exist: {directoryPath}");
+                }
                 return new List<string>();
             }
 
@@ -40,6 +45,7 @@ namespace PictureRenameApp.Services
 
                 // Use HashSet for O(1) lookups
                 var supportedExtensions = new HashSet<string>(_imageService.GetSupportedExtensions(), StringComparer.OrdinalIgnoreCase);
+                
                 var files = Directory.GetFiles(directoryPath)
                     .Where(f => supportedExtensions.Contains(Path.GetExtension(f)))
                     .OrderBy(f => f)
@@ -79,9 +85,9 @@ namespace PictureRenameApp.Services
                 if (!overwrite)
                 {
                     _logger.LogWarning($"Destination file already exists: {destinationPath}");
-                    // Do not throw, just return gracefully
                     return;
                 }
+                
                 try
                 {
                     File.Delete(destinationPath);
@@ -102,32 +108,12 @@ namespace PictureRenameApp.Services
             catch (Exception ex)
             {
                 _logger.LogError($"Unexpected error during file rename", ex);
-                // Do not throw, just return gracefully
-                return;
             }
         }
 
         public string FormatFileSize(long bytes)
         {
-            if (bytes < 0)
-            {
-                _logger.LogWarning($"Invalid file size: {bytes}");
-                return "0 B";
-            }
-
-            string[] sizes = { "B", "KB", "MB", "GB", "TB" };
-            double len = bytes;
-            int order = 0;
-
-            while (len >= 1024 && order < sizes.Length - 1)
-            {
-                order++;
-                len = len / 1024;
-            }
-
-            // Use . (dot) as decimal separator for test compatibility
-            var formatted = len % 1 == 0 ? $"{len:0} {sizes[order]}" : $"{len:0.##} {sizes[order]}";
-            return formatted;
+            return bytes.FormatFileSize();
         }
     }
 }
