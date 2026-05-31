@@ -9,7 +9,7 @@ Target platform: Windows (WinForms), .NET 8
 
 ---
 
-## What the project does
+## Overview
 
 Picture Rename App provides a simple, focused UI to:
 
@@ -18,25 +18,42 @@ Picture Rename App provides a simple, focused UI to:
 - Rename a single file or perform batch renames with automatic numbering
 - Optionally move batch-renamed files into a dedicated subfolder named after the chosen base name
 - Remove files from the current list or permanently delete them from disk (prompted)
-- Detect duplicate files and (optionally) remove duplicates
+- Detect duplicate files and manage them
 
-This project emphasizes reliability, predictable behavior, and efficient memory use when handling large image collections.
-
----
-
-## Why this project is useful
-
-Key features and benefits:
-
-- Fast, memory-conscious thumbnail generation
-- Batch rename convenience with automatic destination-folder creation
-- Clear prompts for destructive operations (delete vs remove)
-- Extensible, testable service layer (image, file, logger) making it easy to adapt or extend
-- Simple UI optimized for quick image renaming workflows
+The project emphasizes reliability, predictable behavior, and efficient memory use when handling large image collections. The codebase follows a service-oriented design (image, file, logger services), centralized configuration, and safe UI threading patterns.
 
 ---
 
-## Getting started (developer)
+## Screenshots
+
+Place GUI screenshots in the `screenshots/` directory. The README references the following images (add real screenshots there):
+
+- `screenshots/main.svg` — main application window (thumbnail strip + preview)
+- `screenshots/open-folder.svg` — folder selection and thumbnail loading
+- `screenshots/batch-rename.svg` — batch rename dialog and example
+- `screenshots/confirm-remove.svg` — remove vs delete prompt
+
+Example markdown to show screenshots (these images are not included by default):
+
+![Main window](screenshots/main.svg)
+
+![Open folder](screenshots/open-folder.svg)
+
+![Batch rename dialog](screenshots/batch-rename.svg)
+
+![Remove or Delete prompt](screenshots/confirm-remove.svg)
+
+Mock screenshots are included in the `screenshots/` folder as SVG placeholders. To replace them with real captures:
+
+1. Create a `screenshots` folder at the repository root (already present).
+2. Replace the corresponding SVG files with PNG or SVG screenshots from your machine (recommended resolution ~1366x768).
+3. Commit the images to the repository.
+
+The repository currently contains SVG mock images you can use as examples or replace with real screenshots.
+
+---
+
+## Quick Start (Developer)
 
 ### Prerequisites
 
@@ -67,11 +84,11 @@ dotnet test
 
 ---
 
-## Usage (end-user)
+## Usage (End-user)
 
 1. Click **Open folder…** to choose a directory with images.
 2. Thumbnails are generated; click any thumbnail to preview the image and metadata.
-3. Use **Rename** for single or batch renames. For batch renames, the renamed files are placed into a subfolder named after your base name.
+3. Use **Rename** for single or batch renames. For batch renames, the renamed files are placed into a subfolder named after your base name (optional behavior available in settings).
 4. Use **Remove** to remove files from the displayed list — a prompt lets you choose to remove (keep on disk) or delete (permanently remove from disk).
 5. Use **Find duplicates…** to scan for and manage duplicates.
 
@@ -82,14 +99,15 @@ Notes
 
 ---
 
-## Developer guide & architecture
+## Architecture (Developer)
 
 Key locations in the codebase:
 
-- `Controllers/` — ApplicationController and interfaces
-- `Services/` — ImageService, FileService, ApplicationLogger
-- `Utilities/` — Extension methods and LRU cache
+- `Controllers/` — `ApplicationController` orchestrates operations and updates the model
+- `Services/` — `ImageService`, `FileService`, `ApplicationLogger`
+- `Utilities/` — extension methods and `LRUCache`
 - `Configuration/AppConstants.cs` — centralized constants
+- `MainForm.cs` — WinForms UI (thumbnail strip, preview, toolbar)
 - `Program.cs` — application entry point
 
 Design highlights:
@@ -100,24 +118,11 @@ Design highlights:
 
 ---
 
-## Useful commands
+## Notable Behaviors
 
-- Build: `dotnet build`
-- Run: `dotnet run --project PictureRenameApp.csproj`
-- Test: `dotnet test` (if tests are present)
-
----
-
-## Documentation & help
-
-More detailed documentation is included in this repository:
-
-- Documentation index: `DOCUMENTATION_INDEX.md`
-- Quick developer reference: `QUICK_REFERENCE_GUIDE.md`
-- Comprehensive refactor notes: `COMPREHENSIVE_REFACTORING_REPORT.md`
-- Refactoring checklist: `REFACTORING_CHECKLIST.md`
-
-If you need support or want to report an issue, open an issue in this repository.
+- Batch rename: creates a subfolder with the chosen base name and moves renamed files into it
+- Remove action: prompts to either remove from list or permanently delete; the delete path confirms again before removing files
+- Thumbnail generation: optimized for speed and memory using controlled concurrency and lower-quality rendering suitable for thumbnails
 
 ---
 
@@ -131,13 +136,7 @@ Contributions are welcome. Please follow standard GitHub workflow:
 4. Run `dotnet build` and `dotnet test`
 5. Submit a pull request
 
-Please add a `CONTRIBUTING.md` file if you want project-specific contributor guidelines.
-
----
-
-## Maintainers
-
-See the repository owners and contributors on GitHub.
+Please add a `CONTRIBUTING.md` if you want project-specific contributor guidelines.
 
 ---
 
@@ -147,10 +146,9 @@ See the `LICENSE` file in the repository for license details.
 
 ---
 
-If you'd like, I can also:
+## Contact / Support
 
-- Add a CONTRIBUTING.md with suggested guidelines
-- Add a GitHub Actions CI workflow and badge
-- Add a sample screenshot and more usage examples
+If you need support or want to report an issue, open an issue in this repository. Include screenshots and steps to reproduce the problem.
 
-Tell me which you'd prefer next.
+---
+
