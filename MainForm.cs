@@ -771,13 +771,18 @@ public partial class MainForm : Form
 
     private void DeleteReviewed(IReadOnlyList<(DuplicateCandidate Keep, IReadOnlyList<DuplicateCandidate> Remove)> decisions)
     {
-        // Files may have changed since the scan: only delete copies that are unchanged and whose kept file still exists.
+        // Files may have changed since the scan: only delete unchanged copies whose kept file is also unchanged.
         var toDelete = new List<string>();
         var sizes = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
         int changed = 0;
         foreach (var (keep, remove) in decisions)
         {
-            if (!File.Exists(keep.Path)) { changed += remove.Count; continue; }
+            var kept = new FileInfo(keep.Path);
+            if (!kept.Exists || kept.Length != keep.Length || kept.LastWriteTimeUtc != keep.Modified)
+            {
+                changed += remove.Count;
+                continue;
+            }
             foreach (var c in remove)
             {
                 var fi = new FileInfo(c.Path);
