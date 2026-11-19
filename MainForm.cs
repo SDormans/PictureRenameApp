@@ -767,7 +767,8 @@ public partial class MainForm : Form
             && entry.Length == f.Length && entry.Ticks == f.LastWriteTimeUtc.Ticks)
             return entry.Fingerprint;
         var fp = ImageFingerprint.TryCompute(f.FullName);
-        _fingerprintCache[f.FullName] = (f.Length, f.LastWriteTimeUtc.Ticks, fp);
+        // A failed read (e.g. file locked) is not cached so the next scan retries it.
+        if (fp != null) _fingerprintCache[f.FullName] = (f.Length, f.LastWriteTimeUtc.Ticks, fp);
         return fp;
     }
 
