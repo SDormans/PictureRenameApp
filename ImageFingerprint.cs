@@ -16,6 +16,11 @@ public readonly record struct ImageFingerprint(ulong? Hash, int Width, int Heigh
         {
             using var fs = File.OpenRead(path);
             using var img = Image.FromStream(fs, useEmbeddedColorManagement: false, validateImageData: false);
+            // Animations and multi-page images can differ after the first frame, which is all the hash sees.
+            foreach (var dim in img.FrameDimensionsList)
+                if (img.GetFrameCount(new FrameDimension(dim)) > 1)
+                    return new ImageFingerprint(null, img.Width, img.Height);
+
             using var small = new Bitmap(PerceptualHash.Width, PerceptualHash.Height, PixelFormat.Format24bppRgb);
             using (var g = Graphics.FromImage(small))
             {
