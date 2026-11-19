@@ -23,6 +23,16 @@ namespace PictureRenameApp.Tests
             Assert.Equal(expected, RenamePattern.SubfolderName(pattern));
         }
 
+        [Theory]
+        [InlineData("CON {n}", "_CON")]
+        [InlineData("nul {n}", "_nul")]
+        [InlineData("com1.x {n}", "_com1.x")]
+        [InlineData("Console {n}", "Console")]
+        public void SubfolderName_AvoidsReservedDeviceNames(string pattern, string expected)
+        {
+            Assert.Equal(expected, RenamePattern.SubfolderName(pattern));
+        }
+
         [Fact]
         public void SubfolderName_RemovesInvalidFileNameChars()
         {
