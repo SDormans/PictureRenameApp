@@ -1,10 +1,23 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Windows.Forms;
 
 namespace PictureRenameApp;
+
+public sealed class KeepOnlyEventArgs : EventArgs
+{
+    public KeepOnlyEventArgs(string keep, IReadOnlyList<string> remove)
+    {
+        Keep = keep;
+        Remove = remove;
+    }
+
+    public string Keep { get; }
+    public IReadOnlyList<string> Remove { get; }
+}
 
 public class DuplicatesForm : Form
 {
@@ -14,9 +27,14 @@ public class DuplicatesForm : Form
     private readonly Label _progressText = new();
     private readonly Button _cancelBtn = new();
     private readonly Button _refreshBtn = new();
+    private readonly Button _openBtn = new();
+    private readonly Button _keepBtn = new();
+    private readonly Button _explorerBtn = new();
 
     public event EventHandler? CancelRequested;
     public event EventHandler? RefreshRequested;
+    public event EventHandler<string>? OpenRequested;
+    public event EventHandler<KeepOnlyEventArgs>? KeepOnlyRequested;
 
     public DuplicatesForm()
     {
@@ -42,12 +60,28 @@ public class DuplicatesForm : Form
         _tree.Dock = DockStyle.Fill;
         _tree.BackColor = Theme.Panel; _tree.ForeColor = Theme.Fg;
         _tree.BorderStyle = BorderStyle.None; _tree.HideSelection = false;
+        _tree.AfterSelect += (_, _) => UpdateActionButtons();
+        _tree.NodeMouseDoubleClick += (_, e) => { if (e.Node.Tag is string path) OpenRequested?.Invoke(this, path); };
 
         var btnRow = new Panel { Dock = DockStyle.Bottom, Height = 44, Padding = new Padding(8) };
         StyleBtn(_cancelBtn, false); _cancelBtn.Text = "Cancel scan"; _cancelBtn.Width = 110; _cancelBtn.Dock = DockStyle.Left;
         _cancelBtn.Click += (_, _) => CancelRequested?.Invoke(this, EventArgs.Empty);
         StyleBtn(_refreshBtn, true); _refreshBtn.Text = "Refresh"; _refreshBtn.Width = 90; _refreshBtn.Dock = DockStyle.Right;
         _refreshBtn.Click += (_, _) => RefreshRequested?.Invoke(this, EventArgs.Empty);
+
+        var actions = new FlowLayoutPanel { Dock = DockStyle.Fill, WrapContents = false, Padding = new Padding(8, 0, 0, 0) };
+        foreach (var (btn, text) in new[] { (_openBtn, "Open"), (_keepBtn, "Keep this, delete others"), (_explorerBtn, "Show in Explorer") })
+        {
+            StyleBtn(btn, false);
+            btn.Text = text; btn.AutoSize = true; btn.Margin = new Padding(0, 0, 8, 0); btn.Padding = new Padding(6, 0, 6, 0);
+            actions.Controls.Add(btn);
+        }
+        _openBtn.Click += (_, _) => { if (SelectedPath is { } p) OpenRequested?.Invoke(this, p); };
+        _keepBtn.Click += (_, _) => KeepSelected();
+        _explorerBtn.Click += (_, _) => { if (SelectedPath is { } p) ShowInExplorer(p); };
+        UpdateActionButtons();
+
+        btnRow.Controls.Add(actions);
         btnRow.Controls.Add(_cancelBtn);
         btnRow.Controls.Add(_refreshBtn);
 
@@ -109,12 +143,38 @@ public class DuplicatesForm : Form
             foreach (var g in groups)
             {
                 var head = new TreeNode($"Group {gi++}  ·  {g.Count} files  ·  {FormatSize(g[0].Length)}");
-                foreach (var f in g) head.Nodes.Add(new TreeNode(f.FullName));
+                foreach (var f in g) head.Nodes.Add(new TreeNode(f.FullName) { Tag = f.FullName });
                 head.Expand();
                 _tree.Nodes.Add(head);
             }
         }
         _tree.EndUpdate();
+        UpdateActionButtons();
+    }
+
+    private string? SelectedPath => _tree.SelectedNode?.Tag as string;
+
+    private void UpdateActionButtons()
+    {
+        var hasFile = SelectedPath != null;
+        _openBtn.Enabled = _keepBtn.Enabled = _explorerBtn.Enabled = hasFile;
+    }
+
+    private void KeepSelected()
+    {
+        if (_tree.SelectedNode is not { Tag: string keep, Parent: { } group }) return;
+        var remove = group.Nodes.Cast<TreeNode>()
+            .Select(n => n.Tag as string)
+            .Where(p => p != null && p != keep)
+            .Select(p => p!)
+            .ToList();
+        if (remove.Count > 0) KeepOnlyRequested?.Invoke(this, new KeepOnlyEventArgs(keep, remove));
+    }
+
+    private static void ShowInExplorer(string path)
+    {
+        try { Process.Start("explorer.exe", $"/select,\"{path}\""); }
+        catch { /* Explorer not available; nothing to do. */ }
     }
 
     private static string Truncate(string s, int max) => s.Length <= max ? s : "…" + s[^(max - 1)..];

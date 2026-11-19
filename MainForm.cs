@@ -8,6 +8,7 @@ using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using Microsoft.VisualBasic.FileIO;
 
 namespace PictureRenameApp;
 
@@ -19,6 +20,9 @@ public partial class MainForm : Form
 
     private readonly HashSet<int> _selection = new();
     private int _selectionAnchor = -1;
+
+    private readonly string _settingsPath = AppSettings.DefaultPath;
+    private readonly AppSettings _settings;
 
     private DuplicatesForm? _duplicatesForm;
     private CancellationTokenSource? _scanCts;
@@ -50,6 +54,7 @@ public partial class MainForm : Form
     private readonly Button _btnRemove = new();
     private readonly Button _btnDelete = new();
     private readonly Button _btnDuplicates = new();
+    private readonly Button _btnSettings = new();
 
     public MainForm()
     {
@@ -60,7 +65,9 @@ public partial class MainForm : Form
         ClientSize = new Size(960, 720);
         StartPosition = FormStartPosition.CenterScreen;
         KeyPreview = true;
+        _settings = AppSettings.Load(_settingsPath);
         BuildLayout();
+        Shown += (_, _) => ReopenLastFolder();
         KeyDown += MainForm_KeyDown;
         Render();
     }
@@ -92,8 +99,9 @@ public partial class MainForm : Form
         StyleBtn(_btnDelete, "Delete", false); _btnDelete.BackColor = Theme.Danger;
         _btnDelete.Click += (_, _) => Delete_Click();
         StyleBtn(_btnDuplicates, "Find duplicates…", false); _btnDuplicates.Click += (_, _) => ShowDuplicates_Click();
+        StyleBtn(_btnSettings, "Settings…", false); _btnSettings.Click += (_, _) => Settings_Click();
         toolbar.Controls.AddRange(new Control[] {
-            _btnOpen, _btnPrev, _btnRename, _btnRemove, _btnDelete, _btnDuplicates, _btnNext
+            _btnOpen, _btnPrev, _btnRename, _btnRemove, _btnDelete, _btnDuplicates, _btnSettings, _btnNext
         });
 
         // Thumbnail strip
@@ -170,6 +178,26 @@ public partial class MainForm : Form
             LoadFolder(dlg.SelectedPath);
     }
 
+    private void ReopenLastFolder()
+    {
+        if (_settings.ReopenLastFolder && !string.IsNullOrEmpty(_settings.LastFolder) && Directory.Exists(_settings.LastFolder))
+            LoadFolder(_settings.LastFolder);
+    }
+
+    private void Settings_Click()
+    {
+        using var dlg = new SettingsDialog(_settings);
+        if (dlg.ShowDialog(this) != DialogResult.OK) return;
+        dlg.ApplyTo(_settings);
+        SaveSettings();
+    }
+
+    private void SaveSettings()
+    {
+        try { _settings.Save(_settingsPath); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { /* settings are best-effort */ }
+    }
+
     private void LoadFolder(string path)
     {
         _files.Clear();
@@ -182,6 +210,8 @@ public partial class MainForm : Form
         {
             foreach (var f in new DirectoryInfo(path).EnumerateFiles())
                 _files.Add(f);
+            _settings.LastFolder = path;
+            SaveSettings();
         }
         catch (Exception ex)
         {
@@ -457,7 +487,7 @@ public partial class MainForm : Form
     private void RenameBatch(List<int> indices)
     {
         var sampleExt = _files[indices[0]].Extension;
-        using var dlg = new BatchRenameDialog(indices.Count, sampleExt);
+        using var dlg = new BatchRenameDialog(indices.Count, sampleExt, _settings.BatchMoveToSubfolder, _settings.DefaultZeroPad);
         if (dlg.ShowDialog(this) != DialogResult.OK) return;
 
         int errors = 0;
@@ -466,11 +496,14 @@ public partial class MainForm : Form
             var idx = indices[i];
             var f = _files[idx];
             var dir = f.DirectoryName!;
+            if (dlg.MoveToSubfolder && !string.Equals(Path.GetFileName(dir), dlg.SubfolderName, StringComparison.OrdinalIgnoreCase))
+                dir = Path.Combine(dir, dlg.SubfolderName);
             var target = Path.Combine(dir, dlg.Format(i, f.Extension));
             if (!string.Equals(target, f.FullName, StringComparison.OrdinalIgnoreCase) && File.Exists(target))
                 target = SuggestUniqueName(target);
             try
             {
+                Directory.CreateDirectory(dir);
                 File.Move(f.FullName, target);
                 ReplaceFileEntry(idx, f.FullName, target);
             }
@@ -520,8 +553,8 @@ public partial class MainForm : Form
 
         // Ask user whether to remove from list or delete from disk
         var prompt = indices.Count == 1
-            ? $"Remove '{_files[indices[0]].Name}' from the list (Yes), or permanently delete it from disk (No)?"
-            : $"Remove {indices.Count} files from the list (Yes), or permanently delete them from disk (No)?";
+            ? $"Remove '{_files[indices[0]].Name}' from the list (Yes), or {DeleteVerb} it (No)?"
+            : $"Remove {indices.Count} files from the list (Yes), or {DeleteVerb} them (No)?";
 
         var result = MessageBox.Show(this, prompt, "Remove / Delete",
             MessageBoxButtons.YesNoCancel, MessageBoxIcon.Question);
@@ -553,20 +586,41 @@ public partial class MainForm : Form
         var indices = EffectiveSelection();
         if (indices.Count == 0) return;
         var prompt = indices.Count == 1
-            ? $"Permanently delete '{_files[indices[0]].Name}'?"
-            : $"Permanently delete {indices.Count} files?";
+            ? $"{Capitalize(DeleteVerb)} '{_files[indices[0]].Name}'?"
+            : $"{Capitalize(DeleteVerb)} {indices.Count} files?";
         if (MessageBox.Show(this, prompt, "Delete", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes)
             return;
 
+        DeleteFiles(indices.Select(i => _files[i].FullName).ToList());
+    }
+
+    private string DeleteVerb => _settings.UseRecycleBin ? "move to the Recycle Bin" : "permanently delete";
+
+    private static string Capitalize(string s) => s.Length == 0 ? s : char.ToUpperInvariant(s[0]) + s[1..];
+
+    private void DeleteFromDisk(string path)
+    {
+        if (_settings.UseRecycleBin)
+            FileSystem.DeleteFile(path, UIOption.OnlyErrorDialogs, RecycleOption.SendToRecycleBin);
+        else
+            File.Delete(path);
+    }
+
+    private void DeleteFiles(IReadOnlyCollection<string> paths)
+    {
         int errors = 0;
-        foreach (var idx in indices.OrderByDescending(i => i))
+        foreach (var path in paths)
         {
-            var f = _files[idx];
             try
             {
-                File.Delete(f.FullName);
-                _hashCache.TryRemove(f.FullName, out _);
-                _files.RemoveAt(idx);
+                DeleteFromDisk(path);
+                _hashCache.TryRemove(path, out _);
+                var idx = _files.FindIndex(f => string.Equals(f.FullName, path, StringComparison.OrdinalIgnoreCase));
+                if (idx >= 0)
+                {
+                    _files.RemoveAt(idx);
+                    if (idx < _index) _index--;
+                }
             }
             catch { errors++; }
         }
@@ -586,11 +640,33 @@ public partial class MainForm : Form
             _duplicatesForm = new DuplicatesForm();
             _duplicatesForm.CancelRequested += (_, _) => _scanCts?.Cancel();
             _duplicatesForm.RefreshRequested += (_, _) => _ = RefreshDuplicatesAsync();
+            _duplicatesForm.OpenRequested += (_, path) => OpenFromDuplicates(path);
+            _duplicatesForm.KeepOnlyRequested += (_, e) => KeepOnlyFromDuplicates(e);
             _duplicatesForm.FormClosed += (_, _) => { _scanCts?.Cancel(); _duplicatesForm = null; };
         }
         _duplicatesForm.Show(this);
         _duplicatesForm.BringToFront();
         _ = RefreshDuplicatesAsync();
+    }
+
+    private void OpenFromDuplicates(string path)
+    {
+        var idx = _files.FindIndex(f => string.Equals(f.FullName, path, StringComparison.OrdinalIgnoreCase));
+        if (idx < 0) return;
+        _index = idx;
+        _selection.Clear();
+        _selectionAnchor = idx;
+        Render();
+        Activate();
+    }
+
+    private void KeepOnlyFromDuplicates(KeepOnlyEventArgs e)
+    {
+        var owner = (IWin32Window?)_duplicatesForm ?? this;
+        var prompt = $"Keep '{Path.GetFileName(e.Keep)}' and {DeleteVerb} {e.Remove.Count} other cop{(e.Remove.Count == 1 ? "y" : "ies")}?";
+        if (MessageBox.Show(owner, prompt, "Keep one", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes)
+            return;
+        DeleteFiles(e.Remove);
     }
 
     private async Task RefreshDuplicatesAsync()
