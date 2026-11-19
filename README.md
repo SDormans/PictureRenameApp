@@ -18,8 +18,8 @@ Picture Rename App provides a simple, focused UI to:
 - Undo the last rename or batch rename (**Undo rename** or Ctrl+Z)
 - Optionally move batch-renamed files into a dedicated subfolder named after the chosen base name
 - Remove files from the current list or delete them from disk (Recycle Bin by default, prompted)
-- Detect duplicate files and manage them (open, keep one and delete the other copies, show in Explorer)
-- Remember preferences (subfolder default, Recycle Bin, zero padding, last folder) in a settings file
+- Find exact duplicates and look-alikes (resized, re-saved or very similar pictures) and review them one group at a time, choosing which file to keep
+- Remember preferences (subfolder default, Recycle Bin, zero padding, last folder, find duplicates after opening) in a settings file
 
 The project emphasizes reliability, predictable behavior, and efficient memory use when handling large image collections. The codebase follows a service-oriented design (image, file, logger services), centralized configuration, and safe UI threading patterns.
 
@@ -77,7 +77,7 @@ The tests need Windows (the test host uses the Windows Desktop runtime). CI runs
    Use **Undo rename** (Ctrl+Z) to move the files of the last rename back; a subfolder created by that rename is removed again if it ends up empty.
 4. Use **Remove from list** to remove files from the displayed list. The prompt lets you either keep them on disk or delete them.
 5. Use **Delete** to delete files. By default they go to the Recycle Bin; switch to permanent deletion in **Settings…**.
-6. Use **Find duplicates…** to scan for identical files. Select a file in a group and use **Keep this, delete others**, **Open** (or double-click) to preview it, or **Show in Explorer**.
+6. Use **Review duplicates…**, or tick **Find duplicates after opening** so it starts when you open a folder. Identical files and look-alikes are shown one group at a time; the suggested file (highest resolution, then largest) is pre-selected. Click the picture to keep and press **Keep selected** (Enter), or **Keep all (skip)**. **Back** changes an earlier choice. Nothing is deleted until the summary at the end, where **Delete N file(s)** removes the others (Recycle Bin by default).
 
 Notes
 
@@ -95,7 +95,7 @@ Key locations in the codebase:
 - `Utilities/` — extension methods and `LRUCache`
 - `Configuration/AppConstants.cs` — centralized constants
 - `MainForm.cs` — WinForms UI and the app logic in use today (thumbnail strip, preview, toolbar, rename/delete/duplicates)
-- `BatchRenameDialog.cs`, `RenameDialog.cs`, `DuplicatesForm.cs`, `SettingsDialog.cs` — dialogs
+- `BatchRenameDialog.cs`, `RenameDialog.cs`, `DuplicateReviewForm.cs`, `SettingsDialog.cs` — dialogs
 - `RenamePattern.cs` — batch rename pattern formatting and subfolder naming
 - `AppSettings.cs` — persisted user settings (JSON)
 - `Program.cs` — application entry point

@@ -26,10 +26,8 @@ public partial class MainForm : Form
 
     private RenameOperation? _lastRename;
 
-    private DuplicatesForm? _duplicatesForm;
-    private CancellationTokenSource? _scanCts;
-
     private readonly ConcurrentDictionary<string, (long Length, long Ticks, string Hash)> _hashCache = new();
+    private readonly ConcurrentDictionary<string, (long Length, long Ticks, ImageFingerprint? Fingerprint)> _fingerprintCache = new();
     private readonly Dictionary<string, Image> _thumbCache = new();
     private int _thumbGeneration;
     private static readonly SemaphoreSlim _thumbThrottle =
@@ -58,6 +56,7 @@ public partial class MainForm : Form
     private readonly Button _btnDuplicates = new();
     private readonly Button _btnSettings = new();
     private readonly Button _btnUndo = new();
+    private readonly CheckBox _chkReviewOnOpen = new();
 
     public MainForm()
     {
@@ -65,7 +64,7 @@ public partial class MainForm : Form
         BackColor = Theme.Bg;
         ForeColor = Theme.Fg;
         Font = new Font("Segoe UI", 9.5f);
-        ClientSize = new Size(960, 720);
+        ClientSize = new Size(1200, 720);
         StartPosition = FormStartPosition.CenterScreen;
         KeyPreview = true;
         _settings = AppSettings.Load(_settingsPath);
@@ -102,10 +101,21 @@ public partial class MainForm : Form
         StyleBtn(_btnRemove, "Remove from list", false); _btnRemove.Click += (_, _) => Remove_Click();
         StyleBtn(_btnDelete, "Delete", false); _btnDelete.BackColor = Theme.Danger;
         _btnDelete.Click += (_, _) => Delete_Click();
-        StyleBtn(_btnDuplicates, "Find duplicates…", false); _btnDuplicates.Click += (_, _) => ShowDuplicates_Click();
+        StyleBtn(_btnDuplicates, "Review duplicates…", false); _btnDuplicates.Click += (_, _) => ReviewDuplicates();
+        _chkReviewOnOpen.Text = "Find duplicates after opening";
+        _chkReviewOnOpen.AutoSize = true;
+        _chkReviewOnOpen.ForeColor = Theme.Fg;
+        _chkReviewOnOpen.Margin = new Padding(6, 7, 6, 0);
+        _chkReviewOnOpen.Checked = _settings.ReviewDuplicatesOnOpen;
+        _chkReviewOnOpen.CheckedChanged += (_, _) =>
+        {
+            if (_settings.ReviewDuplicatesOnOpen == _chkReviewOnOpen.Checked) return;
+            _settings.ReviewDuplicatesOnOpen = _chkReviewOnOpen.Checked;
+            SaveSettings();
+        };
         StyleBtn(_btnSettings, "Settings…", false); _btnSettings.Click += (_, _) => Settings_Click();
         toolbar.Controls.AddRange(new Control[] {
-            _btnOpen, _btnPrev, _btnRename, _btnUndo, _btnRemove, _btnDelete, _btnDuplicates, _btnSettings, _btnNext
+            _btnOpen, _btnPrev, _btnRename, _btnUndo, _btnRemove, _btnDelete, _btnDuplicates, _chkReviewOnOpen, _btnSettings, _btnNext
         });
 
         // Thumbnail strip
@@ -178,8 +188,10 @@ public partial class MainForm : Form
     private void OpenFolder_Click()
     {
         using var dlg = new FolderBrowserDialog { Description = "Choose a folder" };
-        if (dlg.ShowDialog(this) == DialogResult.OK)
-            LoadFolder(dlg.SelectedPath);
+        if (dlg.ShowDialog(this) != DialogResult.OK) return;
+        LoadFolder(dlg.SelectedPath);
+        if (_settings.ReviewDuplicatesOnOpen && _files.Count > 1)
+            BeginInvoke(new Action(ReviewDuplicates));
     }
 
     private void ReopenLastFolder()
@@ -193,6 +205,7 @@ public partial class MainForm : Form
         using var dlg = new SettingsDialog(_settings);
         if (dlg.ShowDialog(this) != DialogResult.OK) return;
         dlg.ApplyTo(_settings);
+        _chkReviewOnOpen.Checked = _settings.ReviewDuplicatesOnOpen;
         SaveSettings();
     }
 
@@ -206,6 +219,7 @@ public partial class MainForm : Form
     {
         _files.Clear();
         _hashCache.Clear();
+        _fingerprintCache.Clear();
         foreach (var b in _thumbCache.Values) b.Dispose();
         _thumbCache.Clear();
         _selection.Clear();
@@ -225,7 +239,6 @@ public partial class MainForm : Form
         _index = _files.Count > 0 ? 0 : -1;
         RebuildThumbnails();
         Render();
-        _ = RefreshDuplicatesAsync();
     }
 
     // ---------- Rendering ----------
@@ -506,7 +519,6 @@ public partial class MainForm : Form
             ReplaceFileEntry(idx, f.FullName, target);
             RebuildThumbnails();
             Render();
-            _ = RefreshDuplicatesAsync();
         }
         catch (Exception ex)
         {
@@ -546,7 +558,6 @@ public partial class MainForm : Form
         _selection.Clear();
         RebuildThumbnails();
         Render();
-        _ = RefreshDuplicatesAsync();
         if (errors > 0)
             MessageBox.Show(this, $"{errors} file(s) failed to rename.", "Rename", MessageBoxButtons.OK, MessageBoxIcon.Warning);
     }
@@ -579,7 +590,6 @@ public partial class MainForm : Form
         }
         RebuildThumbnails();
         Render();
-        _ = RefreshDuplicatesAsync();
         if (result.Failed > 0)
             MessageBox.Show(this, $"{result.Failed} file(s) could not be restored (missing, or the original name is taken).",
                 "Undo rename", MessageBoxButtons.OK, MessageBoxIcon.Warning);
@@ -603,6 +613,10 @@ public partial class MainForm : Form
         if (_hashCache.TryRemove(oldPath, out var cached))
         {
             _hashCache[newPath] = cached;
+        }
+        if (_fingerprintCache.TryRemove(oldPath, out var fp))
+        {
+            _fingerprintCache[newPath] = fp;
         }
         if (_thumbCache.TryGetValue(oldPath, out var tn))
         {
@@ -646,7 +660,6 @@ public partial class MainForm : Form
         _selection.Clear();
         if (_index >= _files.Count) _index = _files.Count - 1;
         RebuildThumbnails(); Render();
-        _ = RefreshDuplicatesAsync();
     }
 
     private void Delete_Click()
@@ -674,14 +687,16 @@ public partial class MainForm : Form
             File.Delete(path);
     }
 
-    private void DeleteFiles(IReadOnlyCollection<string> paths)
+    private List<string> DeleteFiles(IReadOnlyCollection<string> paths)
     {
         int errors = 0;
+        var deleted = new List<string>();
         foreach (var path in paths)
         {
             try
             {
                 DeleteFromDisk(path);
+                deleted.Add(path);
                 _hashCache.TryRemove(path, out _);
                 var idx = _files.FindIndex(f => string.Equals(f.FullName, path, StringComparison.OrdinalIgnoreCase));
                 if (idx >= 0)
@@ -695,143 +710,102 @@ public partial class MainForm : Form
         _selection.Clear();
         if (_index >= _files.Count) _index = _files.Count - 1;
         RebuildThumbnails(); Render();
-        _ = RefreshDuplicatesAsync();
         if (errors > 0)
             MessageBox.Show(this, $"{errors} file(s) failed to delete.", "Delete", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        return deleted;
     }
 
     // ---------- Duplicates ----------
-    private void ShowDuplicates_Click()
+    private void ReviewDuplicates()
     {
-        if (_duplicatesForm == null || _duplicatesForm.IsDisposed)
+        if (_files.Count < 2)
         {
-            _duplicatesForm = new DuplicatesForm();
-            _duplicatesForm.CancelRequested += (_, _) => _scanCts?.Cancel();
-            _duplicatesForm.RefreshRequested += (_, _) => _ = RefreshDuplicatesAsync();
-            _duplicatesForm.OpenRequested += (_, path) => OpenFromDuplicates(path);
-            _duplicatesForm.KeepOnlyRequested += (_, e) => KeepOnlyFromDuplicates(e);
-            _duplicatesForm.FormClosed += (_, _) => { _scanCts?.Cancel(); _duplicatesForm = null; };
+            MessageBox.Show(this, "Open a folder with at least two files first.", "Review duplicates", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
         }
-        _duplicatesForm.Show(this);
-        _duplicatesForm.BringToFront();
-        _ = RefreshDuplicatesAsync();
+        var outcome = _settings.UseRecycleBin ? "moved to the Recycle Bin" : "permanently deleted";
+        using var dlg = new DuplicateReviewForm(ScanDuplicatesAsync, outcome);
+        if (dlg.ShowDialog(this) != DialogResult.OK) return;
+        DeleteReviewed(dlg.Decisions);
     }
 
-    private void OpenFromDuplicates(string path)
+    private Task<IReadOnlyList<DuplicateGroup>> ScanDuplicatesAsync(IProgress<(int Done, int Total)> progress, CancellationToken ct)
     {
-        var idx = _files.FindIndex(f => string.Equals(f.FullName, path, StringComparison.OrdinalIgnoreCase));
-        if (idx < 0) return;
-        _index = idx;
-        _selection.Clear();
-        _selectionAnchor = idx;
-        Render();
-        Activate();
-    }
-
-    private void KeepOnlyFromDuplicates(KeepOnlyEventArgs e)
-    {
-        var owner = (IWin32Window?)_duplicatesForm ?? this;
-
-        // The scan may be stale: only delete files that are still byte-identical to the kept file.
-        var keep = new FileInfo(e.Keep);
-        var remove = new List<string>();
-        try
+        var paths = _files.Select(f => f.FullName).ToList();
+        return Task.Run<IReadOnlyList<DuplicateGroup>>(() =>
         {
-            if (keep.Exists)
+            // Symbolic links are skipped: keeping a link and deleting its target would leave nothing.
+            // (Other reparse points, such as OneDrive cloud files, are real files and stay in.)
+            var files = paths.Select(p => new FileInfo(p))
+                .Where(f => f.Exists && (!f.Attributes.HasFlag(FileAttributes.ReparsePoint) || f.LinkTarget == null)).ToList();
+            // Only files that share their length with another file can be byte-identical.
+            var sameLength = files.GroupBy(f => f.Length).Where(g => g.Count() > 1)
+                .SelectMany(g => g).Select(f => f.FullName).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var candidates = new DuplicateCandidate?[files.Count];
+            int done = 0;
+            int reportEvery = Math.Max(1, files.Count / 100);
+            // Decoding full-size photos is memory hungry, so keep parallelism modest.
+            var options = new ParallelOptions { CancellationToken = ct, MaxDegreeOfParallelism = Math.Clamp(Environment.ProcessorCount / 2, 2, 4) };
+            Parallel.For(0, files.Count, options, i =>
             {
-                var keepHash = HashFileCached(keep);
-                foreach (var path in e.Remove)
+                var f = files[i];
+                string? content = null;
+                try { if (sameLength.Contains(f.FullName)) content = HashFileCached(f); }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+                var fp = ImageExt.Contains(f.Extension) ? FingerprintCached(f) : null;
+                candidates[i] = new DuplicateCandidate(f.FullName, f.Length, f.LastWriteTimeUtc, content,
+                    fp?.Hash, fp?.Width ?? 0, fp?.Height ?? 0);
+                var d = Interlocked.Increment(ref done);
+                if (d % reportEvery == 0 || d == files.Count) progress.Report((d, files.Count));
+            });
+            return DuplicateGrouper.Group(candidates.OfType<DuplicateCandidate>().ToList());
+        }, ct);
+    }
+
+    private ImageFingerprint? FingerprintCached(FileInfo f)
+    {
+        if (_fingerprintCache.TryGetValue(f.FullName, out var entry)
+            && entry.Length == f.Length && entry.Ticks == f.LastWriteTimeUtc.Ticks)
+            return entry.Fingerprint;
+        var fp = ImageFingerprint.TryCompute(f.FullName);
+        // A failed read (e.g. file locked) is not cached so the next scan retries it.
+        if (fp != null) _fingerprintCache[f.FullName] = (f.Length, f.LastWriteTimeUtc.Ticks, fp);
+        return fp;
+    }
+
+    private void DeleteReviewed(IReadOnlyList<(DuplicateCandidate Keep, IReadOnlyList<DuplicateCandidate> Remove)> decisions)
+    {
+        // Files may have changed since the scan: only delete unchanged copies whose kept file is also unchanged.
+        var toDelete = new List<string>();
+        var sizes = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+        int changed = 0;
+        foreach (var (keep, remove) in decisions)
+        {
+            var kept = new FileInfo(keep.Path);
+            if (!kept.Exists || kept.Length != keep.Length || kept.LastWriteTimeUtc != keep.Modified)
+            {
+                changed += remove.Count;
+                continue;
+            }
+            foreach (var c in remove)
+            {
+                var fi = new FileInfo(c.Path);
+                if (fi.Exists && fi.Length == c.Length && fi.LastWriteTimeUtc == c.Modified
+                    && !string.Equals(fi.FullName, keep.Path, StringComparison.OrdinalIgnoreCase))
                 {
-                    var fi = new FileInfo(path);
-                    try
-                    {
-                        if (fi.Exists && fi.Length == keep.Length
-                            && !string.Equals(fi.FullName, keep.FullName, StringComparison.OrdinalIgnoreCase)
-                            && HashFileCached(fi) == keepHash)
-                            remove.Add(fi.FullName);
-                    }
-                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-                    {
-                        // Unreadable copy: leave it alone, still clean up the others.
-                    }
+                    toDelete.Add(fi.FullName);
+                    sizes[fi.FullName] = fi.Length;
                 }
+                else changed++;
             }
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            remove.Clear();
-        }
 
-        if (remove.Count == 0)
-        {
-            MessageBox.Show(owner, "The files changed since the scan and are no longer duplicates of the selected file. Nothing was deleted.",
-                "Keep one", MessageBoxButtons.OK, MessageBoxIcon.Information);
-            _ = RefreshDuplicatesAsync();
-            return;
-        }
-
-        var skipped = e.Remove.Count - remove.Count;
-        var prompt = $"Keep '{Path.GetFileName(e.Keep)}' and {DeleteVerb} {remove.Count} other cop{(remove.Count == 1 ? "y" : "ies")}?"
-            + (skipped > 0 ? $"\n\n{skipped} file(s) changed since the scan and will be left alone." : "");
-        if (MessageBox.Show(owner, prompt, "Keep one", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes)
-            return;
-        DeleteFiles(remove);
-    }
-
-    private async Task RefreshDuplicatesAsync()
-    {
-        if (_duplicatesForm == null || _duplicatesForm.IsDisposed) return;
-
-        _scanCts?.Cancel();
-        var cts = new CancellationTokenSource();
-        _scanCts = cts;
-        var ct = cts.Token;
-
-        // Group by length first; only hash candidates.
-        var bySize = _files.GroupBy(f => f.Length).Where(g => g.Count() > 1).ToList();
-        var candidates = bySize.SelectMany(g => g).ToList();
-
-        _duplicatesForm.BeginScan(candidates.Count);
-        var snapshot = candidates.ToList();
-        var hashes = new Dictionary<string, string>();
-        int done = 0;
-        int reportEvery = Math.Max(1, snapshot.Count / 100);
-
-        try
-        {
-            await Task.Run(() =>
-            {
-                foreach (var f in snapshot)
-                {
-                    if (ct.IsCancellationRequested) return;
-                    var h = HashFileCached(f);
-                    lock (hashes) hashes[f.FullName] = h;
-                    int d = Interlocked.Increment(ref done);
-                    if (d % reportEvery == 0 || d == snapshot.Count)
-                    {
-                        var name = f.Name;
-                        BeginInvoke(new Action(() =>
-                        {
-                            if (_duplicatesForm is { IsDisposed: false } w) w.ReportProgress(d, snapshot.Count, name);
-                        }));
-                    }
-                }
-            }, ct);
-        }
-        catch (OperationCanceledException) { }
-
-        if (ct.IsCancellationRequested || _duplicatesForm == null || _duplicatesForm.IsDisposed) return;
-
-        var groups = candidates
-            .Where(f => hashes.ContainsKey(f.FullName))
-            .GroupBy(f => hashes[f.FullName])
-            .Where(g => g.Count() > 1)
-            .Select(g => g.ToList())
-            .OrderByDescending(g => g.Count)
-            .ToList();
-
-        _duplicatesForm.SetGroups(groups);
-        _duplicatesForm.EndScan();
+        var deleted = toDelete.Count > 0 ? DeleteFiles(toDelete) : new List<string>();
+        var verb = _settings.UseRecycleBin ? "Moved" : "Deleted";
+        var where = _settings.UseRecycleBin ? " to the Recycle Bin" : "";
+        var msg = $"{verb} {deleted.Count} file(s){where} ({FormatSize(deleted.Sum(p => sizes[p]))}).";
+        if (changed > 0) msg += $"\n\n{changed} file(s) changed or disappeared since the scan and were left alone.";
+        MessageBox.Show(this, msg, "Review duplicates", MessageBoxButtons.OK, MessageBoxIcon.Information);
     }
 
     private string HashFileCached(FileInfo f)
