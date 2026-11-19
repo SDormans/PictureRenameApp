@@ -49,6 +49,13 @@ namespace PictureRenameApp.Tests
         }
 
         [Fact]
+        public void Format_DoesNotExpandTokensInsideOriginalName()
+        {
+            var item = new RenameItem("x {date} {n}", ".jpg", new DateTime(2024, 5, 1));
+            Assert.Equal("x {date} {n} 7.jpg", RenamePattern.Format("{name} {n}", 7, 1, item));
+        }
+
+        [Fact]
         public void SubfolderName_StripsAllTokens()
         {
             Assert.Equal("Holiday", RenamePattern.SubfolderName("Holiday {date} {name} {n}"));

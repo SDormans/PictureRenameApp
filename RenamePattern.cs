@@ -17,7 +17,7 @@ public static class RenamePattern
 
     private static readonly char[] SubfolderTrimChars = { ' ', '-', '_', '.', '(', ')', '[', ']', '#' };
     private static readonly Regex AnyToken = new(@"\{[^{}]*\}", RegexOptions.Compiled);
-    private static readonly Regex DateToken = new(@"\{date(?::(?<fmt>[^{}]*))?\}", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex Token = new(@"\{(?:(?<n>n)|(?<name>name)|date(?::(?<fmt>[^{}]*))?)\}", RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
     /// <summary>
     /// Expands <c>{n}</c> (zero-padded number), <c>{name}</c> (original file name without extension) and
@@ -26,9 +26,12 @@ public static class RenamePattern
     public static string Format(string pattern, int number, int pad, RenameItem item)
     {
         var num = number.ToString(new string('0', Math.Max(1, pad)));
-        var name = pattern.Contains(NumberToken) ? pattern.Replace(NumberToken, num) : pattern + num;
-        name = name.Replace("{name}", item.OriginalName, StringComparison.OrdinalIgnoreCase);
-        name = DateToken.Replace(name, m => FormatDate(item.Date, m.Groups["fmt"].Value));
+        // Single pass so text inserted by {name} is never expanded again.
+        var name = Token.Replace(pattern, m =>
+            m.Groups["n"].Success ? (m.Value == NumberToken ? num : m.Value)
+            : m.Groups["name"].Success ? item.OriginalName
+            : FormatDate(item.Date, m.Groups["fmt"].Value));
+        if (!pattern.Contains(NumberToken)) name += num;
         return name + item.Extension;
     }
 
