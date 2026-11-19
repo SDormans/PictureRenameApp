@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
@@ -22,17 +23,20 @@ public partial class MainForm : Form
     private DuplicatesForm? _duplicatesForm;
     private CancellationTokenSource? _scanCts;
 
-    private readonly Dictionary<string, (long Length, long Ticks, string Hash)> _hashCache = new();
+    private readonly ConcurrentDictionary<string, (long Length, long Ticks, string Hash)> _hashCache = new();
     private readonly Dictionary<string, Image> _thumbCache = new();
     private int _thumbGeneration;
     private static readonly SemaphoreSlim _thumbThrottle =
         new(Math.Max(2, Environment.ProcessorCount / 2));
 
-    private static readonly string[] ImageExt =
+    private static readonly HashSet<string> ImageExt = new(StringComparer.OrdinalIgnoreCase)
         { ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".tiff" };
+
+    private static readonly Font ThumbCaptionFont = new("Segoe UI", 8f);
 
     // ---------- UI ----------
     private readonly PictureBox _preview = new();
+    private MemoryStream? _previewStream;
     private readonly Label _previewFallback = new();
     private readonly Label _fileName = new();
     private readonly Label _meta = new();
@@ -201,7 +205,7 @@ public partial class MainForm : Form
         if (f == null)
         {
             _fileName.Text = "—"; _meta.Text = "";
-            _preview.Image = null;
+            SetPreviewImage(null, null);
             _previewFallback.Text = "No file selected"; _previewFallback.Visible = true;
             return;
         }
@@ -209,25 +213,50 @@ public partial class MainForm : Form
         _fileName.Text = f.Name;
         _meta.Text = $"Size: {FormatSize(f.Length)}    Modified: {f.LastWriteTime:yyyy-MM-dd HH:mm}    Type: {(string.IsNullOrEmpty(f.Extension) ? "file" : f.Extension)}";
 
-        if (ImageExt.Contains(f.Extension.ToLowerInvariant()))
+        if (ImageExt.Contains(f.Extension))
         {
             try
             {
                 // Load via stream so we don't keep a file lock.
                 using var fs = File.OpenRead(f.FullName);
-                var ms = new MemoryStream(); fs.CopyTo(ms); ms.Position = 0;
-                var prev = _preview.Image;
-                _preview.Image = Image.FromStream(ms);
-                prev?.Dispose();
+                var ms = new MemoryStream();
+                try
+                {
+                    fs.CopyTo(ms); ms.Position = 0;
+                    SetPreviewImage(Image.FromStream(ms), ms);
+                }
+                catch
+                {
+                    ms.Dispose();
+                    throw;
+                }
                 _previewFallback.Visible = false;
                 return;
             }
             catch { /* fall through */ }
         }
 
-        _preview.Image = null;
+        SetPreviewImage(null, null);
         _previewFallback.Text = f.Extension.TrimStart('.').ToUpperInvariant() + " file";
         _previewFallback.Visible = true;
+    }
+
+    // GDI+ requires the stream backing an Image to stay open for the Image's lifetime.
+    private void SetPreviewImage(Image? image, MemoryStream? stream)
+    {
+        var prevImage = _preview.Image;
+        var prevStream = _previewStream;
+        _preview.Image = image;
+        _previewStream = stream;
+        prevImage?.Dispose();
+        prevStream?.Dispose();
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+            SetPreviewImage(null, null);
+        base.Dispose(disposing);
     }
 
     private void Navigate(int delta)
@@ -288,11 +317,10 @@ public partial class MainForm : Form
             tile.Caption.ForeColor = Theme.Muted;
             tile.Caption.TextAlign = ContentAlignment.MiddleCenter;
             tile.Caption.AutoEllipsis = true;
-            tile.Caption.Font = new Font("Segoe UI", 8f);
+            tile.Caption.Font = ThumbCaptionFont;
             tile.Controls.Add(tile.Caption);
             tile.Controls.Add(tile.Pic);
 
-            EventHandler<MouseEventArgs> click = (_, e) => Thumb_Click(idx);
             tile.MouseUp += (s, e) => Thumb_Click(idx);
             tile.Pic.MouseUp += (s, e) => Thumb_Click(idx);
             tile.Caption.MouseUp += (s, e) => Thumb_Click(idx);
@@ -345,7 +373,7 @@ public partial class MainForm : Form
 
     private void QueueThumbnail(FileInfo f, PictureBox target, int generation)
     {
-        if (!ImageExt.Contains(f.Extension.ToLowerInvariant())) return;
+        if (!ImageExt.Contains(f.Extension)) return;
 
         if (_thumbCache.TryGetValue(f.FullName, out var cached))
         {
@@ -471,9 +499,8 @@ public partial class MainForm : Form
 
     private void ReplaceFileEntry(int idx, string oldPath, string newPath)
     {
-        if (_hashCache.TryGetValue(oldPath, out var cached))
+        if (_hashCache.TryRemove(oldPath, out var cached))
         {
-            _hashCache.Remove(oldPath);
             _hashCache[newPath] = cached;
         }
         if (_thumbCache.TryGetValue(oldPath, out var tn))
@@ -512,7 +539,7 @@ public partial class MainForm : Form
         // Default: remove from list only
         foreach (var idx in indices.OrderByDescending(i => i))
         {
-            _hashCache.Remove(_files[idx].FullName);
+            _hashCache.TryRemove(_files[idx].FullName, out _);
             _files.RemoveAt(idx);
         }
         _selection.Clear();
@@ -538,7 +565,7 @@ public partial class MainForm : Form
             try
             {
                 File.Delete(f.FullName);
-                _hashCache.Remove(f.FullName);
+                _hashCache.TryRemove(f.FullName, out _);
                 _files.RemoveAt(idx);
             }
             catch { errors++; }
@@ -632,8 +659,7 @@ public partial class MainForm : Form
         using var sha = SHA1.Create();
         using var fs = File.OpenRead(f.FullName);
         var hash = Convert.ToHexString(sha.ComputeHash(fs));
-        lock (_hashCache)
-            _hashCache[key] = (f.Length, f.LastWriteTimeUtc.Ticks, hash);
+        _hashCache[key] = (f.Length, f.LastWriteTimeUtc.Ticks, hash);
         return hash;
     }
 
