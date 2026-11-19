@@ -13,6 +13,7 @@ public sealed class AppSettings
     public bool UseRecycleBin { get; set; } = true;
     public bool ReopenLastFolder { get; set; } = true;
     public int DefaultZeroPad { get; set; } = 2;
+    public bool ReviewDuplicatesOnOpen { get; set; }
     public string? LastFolder { get; set; }
 
     public static string DefaultPath => Path.Combine(
