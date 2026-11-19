@@ -21,7 +21,9 @@ Picture Rename App provides a simple, focused UI to:
 - Find exact duplicates and look-alikes (resized, re-saved or very similar pictures) and review them one group at a time, choosing which file to keep
 - Remember preferences (subfolder default, Recycle Bin, zero padding, last folder, find duplicates after opening) in a settings file
 
-The project emphasizes reliability, predictable behavior, and efficient memory use when handling large image collections. The codebase follows a service-oriented design (image, file, logger services), centralized configuration, and safe UI threading patterns.
+The project emphasizes reliability, predictable behavior, and efficient memory use when handling large image collections.
+
+Full documentation (user guide, rename patterns, duplicate review, settings, architecture, development) is in the [wiki](docs/wiki/Home.md).
 
 ---
 
@@ -79,6 +81,17 @@ The tests need Windows (the test host uses the Windows Desktop runtime). CI runs
 5. Use **Delete** to delete files. By default they go to the Recycle Bin; switch to permanent deletion in **Settings…**.
 6. Use **Review duplicates…**, or tick **Find duplicates after opening** so it starts when you open a folder. Identical files and look-alikes are shown one group at a time; the suggested file (highest resolution, then largest) is pre-selected. Click the picture to keep and press **Keep selected** (Enter), or **Keep all (skip)**. **Back** changes an earlier choice. Nothing is deleted until the summary at the end, where **Delete N file(s)** removes the others (Recycle Bin by default).
 
+### Keyboard and mouse
+
+| Action | Shortcut |
+|---|---|
+| Previous / next picture | ← / → |
+| Rename (batch rename when several thumbnails are selected) | F2 |
+| Undo last rename | Ctrl+Z |
+| Delete | Delete |
+| Select several thumbnails | Ctrl+click (toggle), Shift+click (range) |
+| Duplicate review: switch picture / keep / back | ← → / Enter / Backspace |
+
 Notes
 
 - The app always confirms before deleting.
@@ -88,23 +101,29 @@ Notes
 
 ## Architecture (Developer)
 
-Key locations in the codebase:
+The running app is the WinForms code at the repo root; `MainForm.cs` holds the application logic. The dependency-injection layer (`Controllers/`, `Services/`, `Models/`) is registered in `Program.cs` but not yet used by the UI.
 
-- `Controllers/` — `ApplicationController` orchestrates operations and updates the model
-- `Services/` — `ImageService`, `FileService`, `ApplicationLogger`
-- `Utilities/` — extension methods and `LRUCache`
-- `Configuration/AppConstants.cs` — centralized constants
-- `MainForm.cs` — WinForms UI and the app logic in use today (thumbnail strip, preview, toolbar, rename/delete/duplicates)
-- `BatchRenameDialog.cs`, `RenameDialog.cs`, `DuplicateReviewForm.cs`, `SettingsDialog.cs` — dialogs
-- `RenamePattern.cs` — batch rename pattern formatting and subfolder naming
-- `AppSettings.cs` — persisted user settings (JSON)
-- `Program.cs` — application entry point
+| Location | Contents |
+|---|---|
+| `Program.cs` | Entry point; builds the DI container and starts `MainForm` |
+| `MainForm.cs` | Main window: thumbnail strip, preview, toolbar, rename / delete / undo, duplicate scan |
+| `RenameDialog.cs`, `BatchRenameDialog.cs`, `SettingsDialog.cs`, `DuplicateReviewForm.cs` | Dialogs |
+| `RenamePattern.cs`, `RenameOperation.cs` | Rename placeholders, subfolder naming, undo log |
+| `ImageMetadata.cs`, `ExifParser.cs` | Dimensions, EXIF date taken and camera |
+| `PerceptualHash.cs`, `ImageFingerprint.cs`, `DuplicateGrouper.cs`, `DuplicateReviewSession.cs` | Look-alike detection, grouping and review state |
+| `AppSettings.cs` | Persisted user settings (JSON) |
+| `Theme.cs` | Colors |
+| `Controllers/`, `Services/`, `Models/`, `ServiceConfiguration.cs` | DI layer (not yet wired into the UI) |
+| `PictureRenameApp/Configuration/AppConstants.cs`, `PictureRenameApp/Utilities/`, `Utilities/` | Constants, extension methods, `LRUCache`, shared helpers |
+| `PictureRenameApp.Tests/` | xUnit tests |
+
+See [Architecture](docs/wiki/Architecture.md) for details.
 
 Design highlights:
 
-- Service-oriented architecture: image, file, and logging responsibilities are separated for testability
-- Centralized constants and extensions to avoid duplication and magic numbers
-- Controlled concurrency for thumbnail generation to keep the UI responsive
+- Thumbnails load in the background with limited concurrency and are cancelled when a new folder is opened
+- File hashes and image fingerprints are cached by path, size and modified time
+- Logic with no UI dependency (rename patterns, undo, EXIF parsing, duplicate grouping) is kept in small classes with unit tests
 
 ---
 
@@ -114,6 +133,7 @@ Design highlights:
 - Remove action: prompts to either remove from list or delete; the delete path confirms again before removing files
 - Delete: sends files to the Recycle Bin unless permanent deletion is chosen in Settings
 - Thumbnail generation: optimized for speed and memory using controlled concurrency and lower-quality rendering suitable for thumbnails
+- Duplicate review: never deletes during the review; files that changed since the scan are left alone
 
 ---
 
