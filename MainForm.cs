@@ -734,7 +734,9 @@ public partial class MainForm : Form
         var paths = _files.Select(f => f.FullName).ToList();
         return Task.Run<IReadOnlyList<DuplicateGroup>>(() =>
         {
-            var files = paths.Select(p => new FileInfo(p)).Where(f => f.Exists).ToList();
+            // Links are skipped: keeping a link and deleting its target would leave nothing.
+            var files = paths.Select(p => new FileInfo(p))
+                .Where(f => f.Exists && !f.Attributes.HasFlag(FileAttributes.ReparsePoint)).ToList();
             // Only files that share their length with another file can be byte-identical.
             var sameLength = files.GroupBy(f => f.Length).Where(g => g.Count() > 1)
                 .SelectMany(g => g).Select(f => f.FullName).ToHashSet(StringComparer.OrdinalIgnoreCase);
