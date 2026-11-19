@@ -24,6 +24,8 @@ public partial class MainForm : Form
     private readonly string _settingsPath = AppSettings.DefaultPath;
     private readonly AppSettings _settings;
 
+    private RenameOperation? _lastRename;
+
     private DuplicatesForm? _duplicatesForm;
     private CancellationTokenSource? _scanCts;
 
@@ -55,6 +57,7 @@ public partial class MainForm : Form
     private readonly Button _btnDelete = new();
     private readonly Button _btnDuplicates = new();
     private readonly Button _btnSettings = new();
+    private readonly Button _btnUndo = new();
 
     public MainForm()
     {
@@ -95,13 +98,14 @@ public partial class MainForm : Form
         StyleBtn(_btnPrev, "◀ Prev", false); _btnPrev.Click += (_, _) => Navigate(-1);
         StyleBtn(_btnNext, "Next ▶", false); _btnNext.Click += (_, _) => Navigate(+1);
         StyleBtn(_btnRename, "Rename", false); _btnRename.Click += (_, _) => Rename_Click();
+        StyleBtn(_btnUndo, "Undo rename", false); _btnUndo.Click += (_, _) => Undo_Click(); _btnUndo.Enabled = false;
         StyleBtn(_btnRemove, "Remove from list", false); _btnRemove.Click += (_, _) => Remove_Click();
         StyleBtn(_btnDelete, "Delete", false); _btnDelete.BackColor = Theme.Danger;
         _btnDelete.Click += (_, _) => Delete_Click();
         StyleBtn(_btnDuplicates, "Find duplicates…", false); _btnDuplicates.Click += (_, _) => ShowDuplicates_Click();
         StyleBtn(_btnSettings, "Settings…", false); _btnSettings.Click += (_, _) => Settings_Click();
         toolbar.Controls.AddRange(new Control[] {
-            _btnOpen, _btnPrev, _btnRename, _btnRemove, _btnDelete, _btnDuplicates, _btnSettings, _btnNext
+            _btnOpen, _btnPrev, _btnRename, _btnUndo, _btnRemove, _btnDelete, _btnDuplicates, _btnSettings, _btnNext
         });
 
         // Thumbnail strip
@@ -241,7 +245,7 @@ public partial class MainForm : Form
         }
 
         _fileName.Text = f.Name;
-        _meta.Text = $"Size: {FormatSize(f.Length)}    Modified: {f.LastWriteTime:yyyy-MM-dd HH:mm}    Type: {(string.IsNullOrEmpty(f.Extension) ? "file" : f.Extension)}";
+        _meta.Text = BuildMetaText(f, null);
 
         if (ImageExt.Contains(f.Extension))
         {
@@ -253,7 +257,9 @@ public partial class MainForm : Form
                 try
                 {
                     fs.CopyTo(ms); ms.Position = 0;
-                    SetPreviewImage(Image.FromStream(ms), ms);
+                    var img = Image.FromStream(ms);
+                    SetPreviewImage(img, ms);
+                    _meta.Text = BuildMetaText(f, TryGetMetadata(img));
                 }
                 catch
                 {
@@ -269,6 +275,26 @@ public partial class MainForm : Form
         SetPreviewImage(null, null);
         _previewFallback.Text = f.Extension.TrimStart('.').ToUpperInvariant() + " file";
         _previewFallback.Visible = true;
+    }
+
+    private static ImageMetadata? TryGetMetadata(Image img)
+    {
+        try { return ImageMetadata.FromImage(img); }
+        catch (ArgumentException) { return null; }
+    }
+
+    private static string BuildMetaText(FileInfo f, ImageMetadata? m)
+    {
+        var parts = new List<string> { $"Size: {FormatSize(f.Length)}" };
+        if (m != null)
+        {
+            parts.Add($"Dimensions: {m.Width} × {m.Height}");
+            if (m.DateTaken is { } taken) parts.Add($"Taken: {taken:yyyy-MM-dd HH:mm}");
+            if (m.Camera != null) parts.Add($"Camera: {m.Camera}");
+        }
+        parts.Add($"Modified: {f.LastWriteTime:yyyy-MM-dd HH:mm}");
+        parts.Add($"Type: {(string.IsNullOrEmpty(f.Extension) ? "file" : f.Extension)}");
+        return string.Join("    ", parts);
     }
 
     // GDI+ requires the stream backing an Image to stay open for the Image's lifetime.
@@ -305,6 +331,7 @@ public partial class MainForm : Form
         if (e.KeyCode == Keys.Right) { Navigate(+1); e.Handled = true; }
         if (e.KeyCode == Keys.Delete){ Delete_Click(); e.Handled = true; }
         if (e.KeyCode == Keys.F2)    { Rename_Click(); e.Handled = true; }
+        if (e.KeyCode == Keys.Z && e.Control) { Undo_Click(); e.Handled = true; }
     }
 
     // ---------- Thumbnails ----------
@@ -473,6 +500,9 @@ public partial class MainForm : Form
         try
         {
             File.Move(f.FullName, target);
+            var op = new RenameOperation();
+            op.AddMove(f.FullName, target);
+            SetLastRename(op);
             ReplaceFileEntry(idx, f.FullName, target);
             RebuildThumbnails();
             Render();
@@ -486,11 +516,13 @@ public partial class MainForm : Form
 
     private void RenameBatch(List<int> indices)
     {
-        var sampleExt = _files[indices[0]].Extension;
-        using var dlg = new BatchRenameDialog(indices.Count, sampleExt, _settings.BatchMoveToSubfolder, _settings.DefaultZeroPad);
+        var items = new RenameItem?[indices.Count];
+        RenameItem ItemAt(int i) => items[i] ??= ToRenameItem(_files[indices[i]]);
+        using var dlg = new BatchRenameDialog(indices.Count, ItemAt, _settings.BatchMoveToSubfolder, _settings.DefaultZeroPad);
         if (dlg.ShowDialog(this) != DialogResult.OK) return;
 
         int errors = 0;
+        var op = new RenameOperation();
         for (int i = 0; i < indices.Count; i++)
         {
             var idx = indices[i];
@@ -498,23 +530,59 @@ public partial class MainForm : Form
             var dir = f.DirectoryName!;
             if (dlg.MoveToSubfolder && !string.Equals(Path.GetFileName(dir), dlg.SubfolderName, StringComparison.OrdinalIgnoreCase))
                 dir = Path.Combine(dir, dlg.SubfolderName);
-            var target = Path.Combine(dir, dlg.Format(i, f.Extension));
+            var target = Path.Combine(dir, dlg.Format(i));
             if (!string.Equals(target, f.FullName, StringComparison.OrdinalIgnoreCase) && File.Exists(target))
                 target = SuggestUniqueName(target);
             try
             {
-                Directory.CreateDirectory(dir);
+                op.EnsureDirectory(dir);
                 File.Move(f.FullName, target);
+                op.AddMove(f.FullName, target);
                 ReplaceFileEntry(idx, f.FullName, target);
             }
             catch { errors++; }
         }
+        SetLastRename(op);
         _selection.Clear();
         RebuildThumbnails();
         Render();
         _ = RefreshDuplicatesAsync();
         if (errors > 0)
             MessageBox.Show(this, $"{errors} file(s) failed to rename.", "Rename", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+    }
+
+    private static RenameItem ToRenameItem(FileInfo f)
+    {
+        var taken = ImageExt.Contains(f.Extension) ? ImageMetadata.TryRead(f.FullName)?.DateTaken : null;
+        return new RenameItem(Path.GetFileNameWithoutExtension(f.Name), f.Extension, taken ?? f.LastWriteTime);
+    }
+
+    private void SetLastRename(RenameOperation op)
+    {
+        if (op.IsEmpty) return;
+        _lastRename = op;
+        _btnUndo.Enabled = true;
+    }
+
+    private void Undo_Click()
+    {
+        var op = _lastRename;
+        if (op == null) return;
+        _lastRename = null;
+        _btnUndo.Enabled = false;
+
+        var result = op.Undo();
+        foreach (var (from, to) in result.Restored)
+        {
+            var idx = _files.FindIndex(f => string.Equals(f.FullName, to, StringComparison.OrdinalIgnoreCase));
+            if (idx >= 0) ReplaceFileEntry(idx, to, from);
+        }
+        RebuildThumbnails();
+        Render();
+        _ = RefreshDuplicatesAsync();
+        if (result.Failed > 0)
+            MessageBox.Show(this, $"{result.Failed} file(s) could not be restored (missing, or the original name is taken).",
+                "Undo rename", MessageBoxButtons.OK, MessageBoxIcon.Warning);
     }
 
     private static string SuggestUniqueName(string path)

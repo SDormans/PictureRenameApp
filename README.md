@@ -13,8 +13,9 @@ Target platform: Windows (WinForms), .NET 8
 Picture Rename App provides a simple, focused UI to:
 
 - Browse directories and view image thumbnails
-- Preview images and view metadata
-- Rename a single file or perform batch renames with automatic numbering
+- Preview images and view metadata (size, dimensions, EXIF date taken and camera)
+- Rename a single file or perform batch renames with automatic numbering and `{name}` / `{date}` placeholders
+- Undo the last rename or batch rename (**Undo rename** or Ctrl+Z)
 - Optionally move batch-renamed files into a dedicated subfolder named after the chosen base name
 - Remove files from the current list or delete them from disk (Recycle Bin by default, prompted)
 - Detect duplicate files and manage them (open, keep one and delete the other copies, show in Explorer)
@@ -72,6 +73,8 @@ The tests need Windows (the test host uses the Windows Desktop runtime). CI runs
 1. Click **Open folder…** to choose a directory with images. The last folder is reopened on the next start (can be turned off in **Settings…**).
 2. Thumbnails are generated; click any thumbnail to preview the image and metadata.
 3. Use **Rename** for single or batch renames. Batch renames use a pattern such as `Holiday {n}`; by default the renamed files are moved into a subfolder named after the base name (`./Holiday/`). Untick **Move into subfolder** in the dialog, or change the default in **Settings…**, to rename in place.
+   Placeholders: `{n}` number, `{name}` original file name, `{date}` date taken (EXIF, falling back to the modified date) as `yyyy-MM-dd`, or `{date:yyyyMMdd}` with any .NET date format. Example: `{date} {name}` → `2024-05-01 IMG_1234 01.jpg`.
+   Use **Undo rename** (Ctrl+Z) to move the files of the last rename back; a subfolder created by that rename is removed again if it ends up empty.
 4. Use **Remove from list** to remove files from the displayed list. The prompt lets you either keep them on disk or delete them.
 5. Use **Delete** to delete files. By default they go to the Recycle Bin; switch to permanent deletion in **Settings…**.
 6. Use **Find duplicates…** to scan for identical files. Select a file in a group and use **Keep this, delete others**, **Open** (or double-click) to preview it, or **Show in Explorer**.
