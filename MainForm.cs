@@ -64,7 +64,7 @@ public partial class MainForm : Form
         BackColor = Theme.Bg;
         ForeColor = Theme.Fg;
         Font = new Font("Segoe UI", 9.5f);
-        ClientSize = new Size(960, 720);
+        ClientSize = new Size(1200, 720);
         StartPosition = FormStartPosition.CenterScreen;
         KeyPreview = true;
         _settings = AppSettings.Load(_settingsPath);
