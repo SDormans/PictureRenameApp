@@ -734,9 +734,10 @@ public partial class MainForm : Form
         var paths = _files.Select(f => f.FullName).ToList();
         return Task.Run<IReadOnlyList<DuplicateGroup>>(() =>
         {
-            // Links are skipped: keeping a link and deleting its target would leave nothing.
+            // Symbolic links are skipped: keeping a link and deleting its target would leave nothing.
+            // (Other reparse points, such as OneDrive cloud files, are real files and stay in.)
             var files = paths.Select(p => new FileInfo(p))
-                .Where(f => f.Exists && !f.Attributes.HasFlag(FileAttributes.ReparsePoint)).ToList();
+                .Where(f => f.Exists && f.LinkTarget == null).ToList();
             // Only files that share their length with another file can be byte-identical.
             var sameLength = files.GroupBy(f => f.Length).Where(g => g.Count() > 1)
                 .SelectMany(g => g).Select(f => f.FullName).ToHashSet(StringComparer.OrdinalIgnoreCase);
