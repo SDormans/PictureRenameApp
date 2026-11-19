@@ -663,10 +663,44 @@ public partial class MainForm : Form
     private void KeepOnlyFromDuplicates(KeepOnlyEventArgs e)
     {
         var owner = (IWin32Window?)_duplicatesForm ?? this;
-        var prompt = $"Keep '{Path.GetFileName(e.Keep)}' and {DeleteVerb} {e.Remove.Count} other cop{(e.Remove.Count == 1 ? "y" : "ies")}?";
+
+        // The scan may be stale: only delete files that are still byte-identical to the kept file.
+        var keep = new FileInfo(e.Keep);
+        var remove = new List<string>();
+        try
+        {
+            if (keep.Exists)
+            {
+                var keepHash = HashFileCached(keep);
+                foreach (var path in e.Remove)
+                {
+                    var fi = new FileInfo(path);
+                    if (fi.Exists && fi.Length == keep.Length
+                        && !string.Equals(fi.FullName, keep.FullName, StringComparison.OrdinalIgnoreCase)
+                        && HashFileCached(fi) == keepHash)
+                        remove.Add(fi.FullName);
+                }
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            remove.Clear();
+        }
+
+        if (remove.Count == 0)
+        {
+            MessageBox.Show(owner, "The files changed since the scan and are no longer duplicates of the selected file. Nothing was deleted.",
+                "Keep one", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            _ = RefreshDuplicatesAsync();
+            return;
+        }
+
+        var skipped = e.Remove.Count - remove.Count;
+        var prompt = $"Keep '{Path.GetFileName(e.Keep)}' and {DeleteVerb} {remove.Count} other cop{(remove.Count == 1 ? "y" : "ies")}?"
+            + (skipped > 0 ? $"\n\n{skipped} file(s) changed since the scan and will be left alone." : "");
         if (MessageBox.Show(owner, prompt, "Keep one", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes)
             return;
-        DeleteFiles(e.Remove);
+        DeleteFiles(remove);
     }
 
     private async Task RefreshDuplicatesAsync()
