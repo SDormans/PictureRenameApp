@@ -32,10 +32,9 @@ namespace PictureRenameApp.Services
         {
             if (!directoryPath.SafeDirectoryExists())
             {
-                if (!string.IsNullOrWhiteSpace(directoryPath))
-                {
-                    _logger.LogWarning($"Directory does not exist: {directoryPath}");
-                }
+                _logger.LogWarning(string.IsNullOrWhiteSpace(directoryPath)
+                    ? "Cannot scan directory: empty path"
+                    : $"Directory does not exist: {directoryPath}");
                 return new List<string>();
             }
 
@@ -113,6 +112,11 @@ namespace PictureRenameApp.Services
 
         public string FormatFileSize(long bytes)
         {
+            if (bytes < 0)
+            {
+                _logger.LogWarning($"Invalid file size: {bytes}");
+                return "0 B";
+            }
             return bytes.FormatFileSize();
         }
     }
