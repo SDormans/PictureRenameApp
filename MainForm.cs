@@ -743,10 +743,17 @@ public partial class MainForm : Form
                 foreach (var path in e.Remove)
                 {
                     var fi = new FileInfo(path);
-                    if (fi.Exists && fi.Length == keep.Length
-                        && !string.Equals(fi.FullName, keep.FullName, StringComparison.OrdinalIgnoreCase)
-                        && HashFileCached(fi) == keepHash)
-                        remove.Add(fi.FullName);
+                    try
+                    {
+                        if (fi.Exists && fi.Length == keep.Length
+                            && !string.Equals(fi.FullName, keep.FullName, StringComparison.OrdinalIgnoreCase)
+                            && HashFileCached(fi) == keepHash)
+                            remove.Add(fi.FullName);
+                    }
+                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                    {
+                        // Unreadable copy: leave it alone, still clean up the others.
+                    }
                 }
             }
         }
