@@ -23,10 +23,15 @@ public readonly record struct ImageFingerprint(ulong? Hash, int Width, int Heigh
 
             using var small = new Bitmap(PerceptualHash.Width, PerceptualHash.Height, PixelFormat.Format24bppRgb);
             using (var g = Graphics.FromImage(small))
+            using (var attrs = new ImageAttributes())
             {
+                // Without mirrored edges GDI+ blends the border with transparent black, so even a
+                // solid-color image gets a dark edge and a non-flat hash.
+                attrs.SetWrapMode(WrapMode.TileFlipXY);
                 g.InterpolationMode = InterpolationMode.HighQualityBilinear;
                 g.PixelOffsetMode = PixelOffsetMode.Half;
-                g.DrawImage(img, new Rectangle(0, 0, small.Width, small.Height));
+                g.DrawImage(img, new Rectangle(0, 0, small.Width, small.Height),
+                    0, 0, img.Width, img.Height, GraphicsUnit.Pixel, attrs);
             }
 
             var lum = new byte[PerceptualHash.Width * PerceptualHash.Height];
