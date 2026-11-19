@@ -1,7 +1,6 @@
 # Picture Rename App
 
-[![Build Status](https://img.shields.io/badge/build-passing-brightgreen)]()
-[![License](https://img.shields.io/badge/license-MIT-blue)]()
+[![build](https://github.com/SDormans/PictureRenameApp/actions/workflows/build.yml/badge.svg)](https://github.com/SDormans/PictureRenameApp/actions/workflows/build.yml)
 
 A lightweight, fast Windows desktop application (WinForms) for browsing, previewing, and renaming image files. Picture Rename App simplifies single and batch renaming, helps find duplicates, and supports safe file operations with clear user confirmations.
 
@@ -17,8 +16,9 @@ Picture Rename App provides a simple, focused UI to:
 - Preview images and view metadata
 - Rename a single file or perform batch renames with automatic numbering
 - Optionally move batch-renamed files into a dedicated subfolder named after the chosen base name
-- Remove files from the current list or permanently delete them from disk (prompted)
-- Detect duplicate files and manage them
+- Remove files from the current list or delete them from disk (Recycle Bin by default, prompted)
+- Detect duplicate files and manage them (open, keep one and delete the other copies, show in Explorer)
+- Remember preferences (subfolder default, Recycle Bin, zero padding, last folder) in a settings file
 
 The project emphasizes reliability, predictable behavior, and efficient memory use when handling large image collections. The codebase follows a service-oriented design (image, file, logger services), centralized configuration, and safe UI threading patterns.
 
@@ -26,30 +26,13 @@ The project emphasizes reliability, predictable behavior, and efficient memory u
 
 ## Screenshots
 
-Place GUI screenshots in the `screenshots/` directory. The README references the following images (add real screenshots there):
-
-- `screenshots/main.svg` — main application window (thumbnail strip + preview)
-- `screenshots/open-folder.svg` — folder selection and thumbnail loading
-- `screenshots/batch-rename.svg` — batch rename dialog and example
-- `screenshots/confirm-remove.svg` — remove vs delete prompt
-
-Example markdown to show screenshots (these images are not included by default):
-
-![Main window](screenshots/main.pg)
+![Main window](screenshots/main.png)
 
 ![Open folder](screenshots/open-folder.png)
 
 ![Batch rename dialog](screenshots/batch-rename.png)
 
 ![Remove or Delete prompt](screenshots/confirm-remove.png)
-
-Mock screenshots are included in the `screenshots/` folder as SVG placeholders. To replace them with real captures:
-
-1. Create a `screenshots` folder at the repository root (already present).
-2. Replace the corresponding SVG files with PNG or SVG screenshots from your machine (recommended resolution ~1366x768).
-3. Commit the images to the repository.
-
-The repository currently contains SVG mock images you can use as examples or replace with real screenshots.
 
 ---
 
@@ -76,26 +59,27 @@ Alternatively, open the project in Visual Studio and run the `PictureRenameApp` 
 
 ### Run tests
 
-If a test project is configured:
-
 ```bash
-dotnet test
+dotnet test PictureRenameApp.Tests/PictureRenameApp.Tests.csproj
 ```
+
+The tests need Windows (the test host uses the Windows Desktop runtime). CI runs build and tests on `windows-latest` for every push to `master` and every pull request.
 
 ---
 
 ## Usage (End-user)
 
-1. Click **Open folder…** to choose a directory with images.
+1. Click **Open folderâ€¦** to choose a directory with images. The last folder is reopened on the next start (can be turned off in **Settingsâ€¦**).
 2. Thumbnails are generated; click any thumbnail to preview the image and metadata.
-3. Use **Rename** for single or batch renames. For batch renames, the renamed files are placed into a subfolder named after your base name (optional behavior available in settings).
-4. Use **Remove** to remove files from the displayed list — a prompt lets you choose to remove (keep on disk) or delete (permanently remove from disk).
-5. Use **Find duplicates…** to scan for and manage duplicates.
+3. Use **Rename** for single or batch renames. Batch renames use a pattern such as `Holiday {n}`; by default the renamed files are moved into a subfolder named after the base name (`./Holiday/`). Untick **Move into subfolder** in the dialog, or change the default in **Settingsâ€¦**, to rename in place.
+4. Use **Remove from list** to remove files from the displayed list. The prompt lets you either keep them on disk or delete them.
+5. Use **Delete** to delete files. By default they go to the Recycle Bin; switch to permanent deletion in **Settingsâ€¦**.
+6. Use **Find duplicatesâ€¦** to scan for identical files. Select a file in a group and use **Keep this, delete others**, **Open** (or double-click) to preview it, or **Show in Explorer**.
 
 Notes
 
-- Deleting files is permanent; the app will confirm before deleting.
-- Batch renames move files into `./<BaseName>/` inside the active directory by default.
+- The app always confirms before deleting.
+- Settings are stored in `%APPDATA%\PictureRenameApp\settings.json`.
 
 ---
 
@@ -103,12 +87,15 @@ Notes
 
 Key locations in the codebase:
 
-- `Controllers/` — `ApplicationController` orchestrates operations and updates the model
-- `Services/` — `ImageService`, `FileService`, `ApplicationLogger`
-- `Utilities/` — extension methods and `LRUCache`
-- `Configuration/AppConstants.cs` — centralized constants
-- `MainForm.cs` — WinForms UI (thumbnail strip, preview, toolbar)
-- `Program.cs` — application entry point
+- `Controllers/` â€” `ApplicationController` orchestrates operations and updates the model
+- `Services/` â€” `ImageService`, `FileService`, `ApplicationLogger`
+- `Utilities/` â€” extension methods and `LRUCache`
+- `Configuration/AppConstants.cs` â€” centralized constants
+- `MainForm.cs` â€” WinForms UI and the app logic in use today (thumbnail strip, preview, toolbar, rename/delete/duplicates)
+- `BatchRenameDialog.cs`, `RenameDialog.cs`, `DuplicatesForm.cs`, `SettingsDialog.cs` â€” dialogs
+- `RenamePattern.cs` â€” batch rename pattern formatting and subfolder naming
+- `AppSettings.cs` â€” persisted user settings (JSON)
+- `Program.cs` â€” application entry point
 
 Design highlights:
 
@@ -120,8 +107,9 @@ Design highlights:
 
 ## Notable Behaviors
 
-- Batch rename: creates a subfolder with the chosen base name and moves renamed files into it
-- Remove action: prompts to either remove from list or permanently delete; the delete path confirms again before removing files
+- Batch rename: by default creates a subfolder with the chosen base name and moves renamed files into it (re-running on files already in that subfolder does not nest it again)
+- Remove action: prompts to either remove from list or delete; the delete path confirms again before removing files
+- Delete: sends files to the Recycle Bin unless permanent deletion is chosen in Settings
 - Thumbnail generation: optimized for speed and memory using controlled concurrency and lower-quality rendering suitable for thumbnails
 
 ---
@@ -142,7 +130,7 @@ Please add a `CONTRIBUTING.md` if you want project-specific contributor guidelin
 
 ## License
 
-See the `LICENSE` file in the repository for license details.
+No license file has been added yet.
 
 ---
 
